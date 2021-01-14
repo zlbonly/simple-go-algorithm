@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	kafkaConn1 = "127.0.0.1: 9092"
+	kafkaConn1 = "127.0.0.1:9092"
 	topic      = "test_kafka"
 )
 
