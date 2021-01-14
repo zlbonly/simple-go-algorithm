@@ -1,4 +1,4 @@
-package exmaple
+package exmaple2
 
 // 友情链接 https://github.com/asong2020/go-algorithm/tree/master/snowFlake
 import (

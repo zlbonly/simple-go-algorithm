@@ -1,7 +1,7 @@
 package main
 
 import (
-	"exmaple/uniqueid"
+	"exmaple2/uniqueid"
 	"fmt"
 	"sync"
 )
@@ -10,7 +10,7 @@ var wg sync.WaitGroup
 
 func main() {
 
-	w := exmaple.NewWorker(5, 5)
+	w := exmaple2.NewWorker(5, 5)
 
 	ch := make(chan uint64, 50000)
 
