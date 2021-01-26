@@ -7,7 +7,9 @@ const (
 	PORT = "8080"
 )
 
+// thrift -r --gen go echo.thrift
 func main() {
+
 	/*tSocket, err := thrift.NewTSocket(net.JoinHostPort(HOST, PORT))
 	if err != nil {
 		log.Fatalln("tSocket error:", err)
