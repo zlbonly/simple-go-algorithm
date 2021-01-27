@@ -434,4 +434,209 @@
 			kafka速度的秘诀在于，它把所有的消息都变成一个批量的文件，并且进行合理的批量压缩，减少网络IO损耗，通过mmap提高I/O速度，写入数据的时候由于单个Partion是末尾添加所以速度最优；读取数据的时候配合sendfile直接暴力输出。
 
 
-    2
+    3、nsq goland 实现消息队列 （pub/sub模式（发布/订阅，典型的生产者/消费者模式））
+
+    	简介： NSQ是Go语言编写的，开源的分布式消息队列中间件，其设计的目的是用来大规模地处理每天数以十亿计级别的消息。NSQ 具有分布式和去中心化拓扑结构，该结构具有无单点故障、故障容错、高可用性以及能够保证消息的可靠传递的特征，是一个成熟的、已在大规模生成环境下应用的产品。
+
+    	1、安装和部署：
+
+    	mac :brew instal nsq
+    	部署：
+    		 1、首先启动nsqlookud
+    		   nsqlookupd
+    		 2、启动nsqd，并接入刚刚启动的nsqlookud。这里为了方便接下来的测试，启动了两个nsqd
+    			nsqd --lookupd-tcp-address=127.0.0.1:4160
+    			启动nqsadmin
+    			nsqadmin --lookupd-http-address=127.0.0.1:4161
+
+    	浏览器访问： 127.0.0.1:4171。nsq 后台管理
+
+       2、服务介绍
+       	1、nsqlookupd 守护进程
+       		主要负责服务发现，负责nsqd的心跳，状态检测，给客户端，nsqadmin 提供nsqd地址与状态
+       	2、nsqd  守护进程
+       		负责接收消息，存储队列和将消息发送给客户
+
+       	3、 nsqadmin nsqadmin是一个web管理界面
+
+
+      核心概念：
+
+      	topic: 	topic 是nsq的消息发布逻辑关键词， message 属于某个特定的topic，由生产者在发布消息时生成。
+      	channels:
+      	 	生产者和消费者之间的消息通道，相当于消息队列。
+
+      	当生产者每次发布消息的时候，消息会采用多播的方式被拷贝到各个channel中，channel起到队列的作用
+
+
+      	message:数据流的形式
+
+
+      	nsq : 支持延迟消息
+
+      		nsq延时消息队列 使用最小堆算法完成 pqueque最小堆优先队列 （根据时间戳，时间戳最小的放在最前面）
+
+
+
+
+    总结 1、nsq 和 kafka 区别
+
+    	1、如何让一个topic的消息，能够被多个消费者实例消费
+
+    		在nsq中，采用channel的方式，而kafka 引入了消费者组 概念
+
+    	2、如何让mq、生产者、消费者能够自动发现对方
+    		这需要一个类似于注册中心的中间件，nsq用的是nsqlookup，而kafka则直接采用了zookeeper:
+
+    	3、 内存 vs 磁盘
+
+    			Nsq 把消息存放在内存，只有当队列里的消息数量超过 --mem-queue-size配置的限制时，才会对消息进行持久化
+
+    	4、无序和有序
+
+    		Nsq 不支持消息顺序消费，
+    		kafka 支持消息顺序消费
+
+    	5、Nsq 采用pub/sub 模式，消费者被动接受消息，kafka可以主动选择消费类型
+
+
+    	6、nsq 支持延时消息投递， nsq 延时消息的实现，采用的是最小堆算法实现，kafka 是根据时间轮实现。
+
+     四、
+     服务注册发现
+
+     	概念： 服务发现  就是想要了解集群中是否有进程在监听udp或者tcp端口，并且通过名字进行查找和链接
+
+     	服务发现需要实现的基本功能：
+
+     		1、服务注册： 同一service的所有节点注册到相同的目录下，节点启动后将自己的信息注册到所属的服务的目录中。
+     		2、健康检查：服务节点定时进行健康检查。注册到服务目录中的信息设置一个较短的TTL，运行正常的服务节点每隔一段时间
+     		去更新信息的TTL，从而达到健康检查效果。
+     		3、服务发现： 通过服务节点能查询到服务提供外部访问的IP和端口号。比如网关代理服务时能够及时发现服务中的新增节点、
+     		丢弃不可用的服务节点。
+
+     	1、etcd（go 服务集群）
+
+     		概念： 一个用于配置共享和服务发现的键值存储系统。
+
+     		应用场景：
+     		1、服务发现
+     			服务发现（Service Discovery）要解决的是分布式系统中最常见的问题之一，即在同一个分布式集群中的进程或服务如何才能找到对方并建立连接。从本质上说，服务发现就是想要了解集群中是否有进程在监听udp或tcp端口，并且通过名字就可以进行查找和连接。要解决服务发现的问题，需要有下面三大支柱，缺一不可。
+
+    		·一个强一致性、高可用的服务存储目录。基于Raft算法的etcd天生就是这样一个强一致性高可用的服务存储目录。
+
+    		·一种注册服务和监控服务健康状态的机制。用户可以在etcd中注册服务，并且对注册的服务设置key TTL，定时保持服务的心跳以达到监控健康状态的效果。
+
+    		·一种查找和连接服务的机制。通过在etcd指定的主题下注册的服务也能在对应的主题下查找到。为了确保连接，我们可以在每个服务机器上都部署一个proxy模式的etcd，这样就可以确保能访问etcd集群的服务都能互相连接。
+
+
+     		2、分布式锁
+
+     		因为etcd使用Raft算法保持了数据的强一致性，某次操作存储到集群中的值必然是全局一致的，所以很容易实现分布式锁。锁服务有两种使用方式，一是保持独占，二是控制时序。
+
+    		1、保持独占，即所有试图获取锁的用户最终只有一个可以得到。etcd为此提供了一套实现分布式锁原子操作CAS（CompareAndSwap）的API。通过设置prevExist值，可以保证在多个节点同时创建某个目录时，只有一个成功，而该用户即可认为是获得了锁。
+    		etcdsync 中使用的就是该方式
+
+    		2、控制时序，即所有试图获取锁的用户都会进入等待队列，获得锁的顺序是全局唯一的，同时决定了队列执行顺序。etcd为此也提供了一套API（自动创建有序键），对一个目录建值时指定为POST动作，这样etcd会自动在目录下生成一个当前最大的值为键，存储这个新的值（客户端编号）。同时还可以使用API按顺序列出所有当前目录下的键值。此时这些键的值就是客户端的时序，而这些键中存储的值可以是代表客户端的编号。
+
+
+     	2、Consul (弹幕专用)  支持Http\gRPC\DNS 多种访问方式，并且保持了CAP中的CP，保持了强一致性和分区容错性
+     		也是基于raft算法。
+     		的节点中分为 Server 和 Client 两种节点（所有的节点也被称为Agent），Server 节点保存数据，Client 节点负责健康检查及转发数据请求到 Server；Server 节点有一个 Leader 节点和多个 Follower 节点，Leader 节点会将数据同步到 Follower 节点，在 Leader 节点挂掉的时候会启动选举机制产生一个新的 Leader。
+
+     		也是基于 RAFT算法实现
+
+     	3、zookeeper （忽略 zab paxos算法）
+
+     	4、raft 算法
+
+     		参考 https://zhuanlan.zhihu.com/p/32052223
+
+    五、RPC
+    RPC 基本概念
+    	1、RPC(Remote Procdure Call)
+
+    	RPC(Remote Procedure Call)，远程过程调用，大部分的RPC框架都遵循如下三个开发步骤：
+    	1. 定义一个接口说明文件：描述了对象(结构体)、对象成员、接口方法等一系列信息；
+    	2. 通过RPC框架所提供的编译器，将接口说明文件编译成具体的语言文件；
+    	3. 在客户端和服务器端分别引入RPC编译器所生成的文件，即可像调用本地方法一样调用服务端代码；
+
+    	rpc 通信流程如图：
+    		https://img-blog.csdn.net/20170207141803075?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvbGloYW8yMQ==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/SouthEast
+
+    	通信过程包括以下几个步骤：
+    		1、客户过程以正常方式调用客户桩（client stub，一段代码）；
+    		2、客户桩生成一个消息，然后调用本地操作系统；
+    		3、客户端操作系统将消息发送给远程操作系统；
+    		4、远程操作系统将消息交给服务器桩（server stub，一段代码）；
+    		5、服务器桩将参数提取出来，然后调用服务器过程；
+    		6、服务器执行要求的操作，操作完成后将结果返回给服务器桩；
+    		7、服务器桩将结果打包成一个消息，然后调用本地操作系统；
+    		8、服务器操作系统将含有结果的消息发送回客户端操作系统；
+    		9、客户端操作系统将消息交给客户桩；
+    		10、客户桩将结果从从消息中提取出来，返回给调用它的客户过程；
+
+    	1、Thrift
+    		thrift主要用于各个服务之间的RPC通信，支持跨语言。thrift是一个典型的CS结构，客户端和服务端可以使用不同的语言开发，thrift通过IDL(Interface Description Language)来关联客户端和服务端
+
+    		thrift通信流程：
+    			Thrift实际上是实现了C/S模式，通过代码生成工具将thrift文生成服务器端和客户端代码（可以为不同语言），从而实现服务端和客户端跨语言的支持。用户在Thirft文件中声明自己的服务，这些服务经过编译后会生成相应语言的代码文件，然后客户端调用服务，服务器端提服务便可以了。
+
+
+    	 1.1 thrift 网络通信
+
+    	 	thrift的网路通信是自己开发实现的，架构图如下：
+    	 	如图：https://images2018.cnblogs.com/blog/645085/201803/645085-20180304155305568-1935823842.png
+
+    	 	协议栈的其他模块都是Thrift的运行时模块：
+
+    			底层IO模块，负责实际的数据传输，包括Socket，文件，或者压缩数据流等。
+
+    			TTransport负责以字节流方式发送和接收Message，是底层IO模块在Thrift框架中的实现，每一个底层IO模块都会有一个对应TTransport来负责Thrift的字节流(Byte Stream)数据在该IO模块上的传输。例如TSocket对应Socket传输，TFileTransport对应文件传输。
+
+    			TProtocol主要负责结构化数据组装成Message，或者从Message结构中读出结构化数据。TProtocol将一个有类型的数据转化为字节流以交给TTransport进行传输，或者从TTransport中读取一定长度的字节数据转化为特定类型的数据。如int32会被TBinaryProtocol Encode为一个四字节的字节数据，或者TBinaryProtocol从TTransport中取出四个字节的数据Decode为int32。
+
+    			TServer负责接收Client的请求，并将请求转发到Processor进行处理。TServer主要任务就是高效的接受Client的请求，特别是在高并发请求的情况下快速完成请求。
+
+    			Processor(或者TProcessor)负责对Client的请求做出相应，包括RPC请求转发，调用参数解析和用户逻辑调用，返回值写回等处理步骤。Processor是服务器端从Thrift框架转入用户逻辑的关键流程。Processor同时也负责向Message结构中写入数据或者读出数据。
+
+    	 	1、TProtocol（协议层），定义数据传输格式，例如：
+    		TBinaryProtocol：二进制格式；
+    		TCompactProtocol：压缩格式；
+    		TJSONProtocol：JSON格式；
+    		TSimpleJSONProtocol：提供JSON只写协议, 生成的文件很容易通过脚本语言解析；
+    		TDebugProtocol：使用易懂的可读的文本格式，以便于debug
+
+    		2、TTransport（传输层），定义数据传输方式，可以为TCP/IP传输，内存共享或者文件共享等）被用作运行时库。
+    		TSocket：阻塞式socker；
+    		TFramedTransport：以frame为单位进行传输，非阻塞式服务中使用；
+    		TFileTransport：以文件形式进行传输；
+    		TMemoryTransport：将内存用于I/O，java实现时内部实际使用了简单的ByteArrayOutputStream；
+    		TZlibTransport：使用zlib进行压缩， 与其他传输方式联合使用，当前无java实现；
+
+    		3、Thrift支持的服务模型
+
+    		TSimpleServer
+    			简单的单线程服务模型，常用于测试。只在一个单独的线程中以阻塞I/O的方式来提供服务。所以它只能服务一个客户端连接，其他所有客户端在被服务器端接受之前都只能等待。
+    		TNonblockingServer
+    			它使用了非阻塞式I/O，使用了java.nio.channels.Selector，通过调用select()，它使得程序阻塞在多个连接上，而不是单一的一个连接上。TNonblockingServer处理这些连接的时候，要么接受它，要么从它那读数据，要么把数据写到它那里，然后再次调用select()来等待下一个准备好的可用的连接。通用这种方式，server可同时服务多个客户端，而不会出现一个客户端把其他客户端全部“饿死”的情况。缺点是所有消息是被调用select()方法的同一个线程处理的，服务端同一时间只会处理一个	消息，并没有实现并行处理。
+    		THsHaServer（半同步半异步server）
+    			针对TNonblockingServer存在的问题，THsHaServer应运而生。它使用一个单独的线程专门负责I/O，同样使用java.nio.channels.Selector，通过调用select()。然后再利用一个独立的worker线程池来处理消息。只要有空闲的worker线程，消息就会被立即处理，因此多条消息能被并行处理。效率进一步得到了提高。
+    		TThreadedSelectorServer
+    			它与THsHaServer的主要区别在于，TThreadedSelectorServer允许你用多个线程来处理网络I/O。它维护了两个线程池，一个用来处理网络I/O，另一个用来进行请求的处理。
+    		TThreadPoolServer
+    			它使用的是一种多线程服务模型，使用标准的阻塞式I/O。它会使用一个单独的线程来接收连接。一旦接受了一个连接，它就会被放入ThreadPoolExecutor中的一个worker线程里处理。worker线程被绑定到特定的客户端连接上，直到它关闭。一旦连接关闭，该worker线程就又回到了线程池中。
+    			这意味着，如果有1万个并发的客户端连接，你就需要运行1万个线程。所以它对系统资源的消耗不像其他类型的server一样那么“友好”。此外，如果客户端数量超过了线程池中的最大线程数，在有一个worker线程可用之前，请求将被一直阻塞在那里。
+    			如果提前知道了将要连接到服务器上的客户端数量，并且不介意运行大量线程的话，TThreadPoolServer可能是个很好的选择。
+
+    	 4、thrift 如何实现多语言通信
+    	 	1、数据传输使用socket(多种语言均支持)，数据在以特定的格式(String等)发送，接收方语言进行解析
+    	 	2、定义thrift的文件，由thrift文件(IDL)生成双方语言的接口、model，在生成的model以及接口中会有解码编码的代码
+
+     2、grpc
+
+
+     3、dubbo(没用过，java netty 等 忽略)
+
+
+
