@@ -471,5 +471,3 @@ TCP/IP 和 HTTP/HTTPS 区别
     eg: 比如你需要访问一个网页，浏览器会先生成HTTP的数据包，然后交给传输层去建立连接。
 
 2、HTTPS协议
-
-三、select/poll/epoll
