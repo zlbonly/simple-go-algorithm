@@ -363,6 +363,20 @@
 
 	Consumer Group（消费者组）： 每个consumer都属于一个特定的group组，一个group组可以包含多个consumer，但是一个组中只会有一个consumer消费数据。
 
+    1、AR 分区中所有的副本统称为AR
+    2 所有与leader副本保持一定程度同步的副本（包括leader副本在内）组成ISR
+    3、与leader 副本同步滞后过的副本（不包括leader副本）组成OSR.
+
+    ISR 是AR 集合的一个子集。AR= ISR+OSR
+	具体流程： 消息会先发送到leader副本，然后follower副本才能从Leader副本中拉取消息进行同步，
+	同步期间内follower副本而言会有一定程度的滞后，与leader 副本同步滞后过的副本（不包括leader副本）组成OSR.
+
+    4、消费者 和 消费者组
+	消费者 ： 负责 订阅 kafka中的 主题（Topic），并且从订阅的主题上拉取消息。
+	消费者组： 消费者组是kafka提供 横向扩展 消费能力的机制，组内的所有消费者协调在一起来消费订阅主题(subscribed topics)的所有分区(partition)。当然，每个分区只能由同一个消费组内的一个consumer来消费
+
+
+
 
 
 	1.2 kafka 吞吐量，速度快的原因
@@ -433,6 +447,163 @@
 
 			kafka速度的秘诀在于，它把所有的消息都变成一个批量的文件，并且进行合理的批量压缩，减少网络IO损耗，通过mmap提高I/O速度，写入数据的时候由于单个Partion是末尾添加所以速度最优；读取数据的时候配合sendfile直接暴力输出。
 
+    1.3 kafka 的消费者位移（_consumer_offsets）
+         1、位移主题（_consumer_offsets） 即 位移主题，Offsets Topic
+
+    	1、0.11.0.0版本之前， Consumer 的位移管理是依托于 Apache ZooKeeper 的，它会自动或手动地将位移数据提交到 ZooKeeper 中保存。当 Consumer 重启后，它能自动从 ZooKeeper 中读取位移数据，从而在上次消费截止的地方继续消费。
+    		缺点：由于Zookeeper并不适合大批量的频繁写入操作，消耗性能
+    	2、	0.11.0.0版本之后，新版Kafka已推荐将consumer的位移信息保存在Kafka内部的topic中，即__consumer_offsets topic，并且默认提供了kafka_consumer_groups.sh脚本供用户查看consumer信息。
+
+    		Consumer位移管理机制： Consumer 的位移数据作为一条条普通的 Kafka 消息，提交到 __consumer_offsets 中。可以这么说，__consumer_offsets 的主要作用是保存 Kafka 消费者的位移信息
+
+    		位移主题的 Key 中应该保存 3 部分内容：<Group ID，主题名，分区号 >
+
+    	3、kafka 删除过期位移。
+    		kafka 使用compact策略 机制删除 位移主题 中的过期消息。
+    		具体过程： kafka 通过Log Cleaner 后台线程 定期巡检Compact主题，删除过期的位移消息。
+
+
+    1.4  kafka 为什么不支持读写分离
+            在kafka中，生产者写入消息，消费者读取消息的操作都是与leader副本进行交互的，从而实现的是一种主写主读的生产消费模型。
+           kafka不支持主写主读 的原因：
+                1、数据一致性。数据从主节点转到从节点必然会有一个延时的时间窗口，这个时间窗口会导致主从节点之间的数据不一致。
+                2、延时问题。类似redis组件，数据从写入主节点到同步主节点的过程中需要经历 网络 -》 主节点内存-〉网络-》从节点内存
+                这几个阶段。但是kafka 主从同步 会比redis等 更加耗时 ，他需要经历 网络 -》 主节点内存 -〉 主节点磁盘 -》网络-〉从节点内存 -》 从节点磁盘 这几个阶段。 对于延时敏感的应用而言，主写从读的功能并不适用。
+                3、kafka的 主写主读的架构 可以达到很大程度删的负载均衡。基本可保证，每个broker都有消息从生产者流入，当消费者读取消息的时候也是从leader副本中读取。每个broker都有消息流出到消费者。
+
+    1.5 kafka 事务和幂等性
+        1、kafka幂等性
+        		生产产者重复生产消息。生产者进行retry会产生重试时，会重复产生消息。有了幂等性之后，在进行retry重试时，只会生成一个消息。
+
+        		幂层性特点：
+        		1、只能保证 Producer 在单个会话内不丟不重，如果 Producer 出现意外挂掉再重启是无法保证的（幂等性情况下，是无法获取之前的状态信息，因此是无法做到跨会话级别的不丢不重）;
+        		2、幂等性不能跨多个 Topic-Partition，只能保证单个 partition 内的幂等性，当涉及多个 Topic-Partition 时，这中间的状态并没有同步。
+        		3、如果需要跨会话、跨多个 topic-partition 的情况，需要使用 Kafka 的事务性来实现。
+
+
+        	具体原理： kafka 引入 Producer ID (PID) 和 Squence Number.
+        		1、每个新的Producer在初始化的时候都会被分配一个唯一的PID，这个PID对用户不可见。
+        		2、Sequence Number （对于每个PID ,该producer发送数据的每个消息都对应一个从0开始单调递增的Squence Number）
+        		3、broker端在缓存中保存了这seq number，对于接收的每条消息，如果其序号比Broker缓存中序号大于1则接受它，否则将其丢弃。这样就可以实现了消息重复提交了
+
+
+        	注意： 当幂等性开启的时候acks即为all。如果显性的将acks设置为0，-1，那么将会报错Must set acks to all in order to use the idempotent producer. Otherwise we cannot guarantee idempotence.
+
+        	2、kafka事务性
+        		1、Kafka中的事务特性主要用于以下两种场景：
+
+        		i) 生产者发送多条消息可以封装在一个事务中，形成一个原子操作。多条消息要么都发送成功，要么都发送失败。
+        		ii) read-process-write模式：将消息消费和生产封装在一个事务中，形成一个原子操作。在一个流式处理的应用中，常常一个服务需要从上游接收消息，然后经过处理后送达到下游，这就对应着消息的消费和生成。
+
+        		kafak在0.11版本开始提供事务支持，提供的是read committed隔离级别的事务。
+        		kafka事务性主要是为了解决幂等性无法跨Partition运作的问题，事务性提供了多个Partition写入的原子性，即写入多个Partition 要么全部成功，要么全部失败。
+
+           	 2、事务原理
+
+            	Kafka 0.11.0.0引入了一个服务器端的模块，名为Transaction Coordinator，用于管理Producer发送的消息的事务性。
+        		该Transaction Coordinator维护Transaction Log，该log存于一个内部的Topic内。由于Topic数据具有持久性，因此事务的状态也具有持久性。
+        		Producer并不直接读写Transaction Log，它与Transaction Coordinator通信，然后由Transaction Coordinator将该事务的状态插入相应的Transaction Log。
+        		Transaction Log的设计与Offset Log用于保存Consumer的Offset类似。
+
+
+     1.6  kafka 如果如何避免消息丢失
+        kafka 数据丢失可能发生在broker,producer,consumer三个端
+
+        	1、broker
+        		Broker丢失消息是由于Kafka本身的原因造成的，kafka为了得到更高的性能和吞吐量，将数据异步批量的存储在磁盘中。消息的刷盘过程，为了提高性能，减少刷盘次数，kafka采用了批量刷盘的做法。即，按照一定的消息量，和时间间隔进行刷盘。
+        		这种机制也是由于linux操作系统决定的。将数据存储到linux操作系统种，会先存储到页缓存（Page cache）中，按照时间或者其他条件进行刷盘（从page cache到file），或者通过fsync命令强制刷盘。数据在page cache中时，如果系统挂掉，数据会丢失。
+
+        		解决方案：
+        		kafka通过producer和broker协同处理单个broker丢失参数的情况。一旦producer发现broker消息丢失，即可自动进行retry。除非retry次数超过阀值（可配置），消息才会丢失。此时需要生产者客户端手动处理该情况
+
+        		通过设置 acks 参数 （详解见acks知识）
+        	2、	另外producer
+        	为了提升效率，减少IO，producer在发送数据时可以将多个请求进行合并后发送。被合并的请求咋发送一线缓存在本地buffer中。缓存的方式和前文提到的刷盘类似，producer可以将请求打包成“块”或者按照时间间隔，将buffer中的数据发出。通过buffer我们可以将生产者改造为异步的方式，而这可以提升我们的发送效率。
+
+        	但是，buffer中的数据就是危险的。在正常情况下，客户端的异步调用可以通过callback来处理消息发送失败或者超时的情况，但是，一旦producer被非法的停止了，那么buffer中的数据将丢失，broker将无法收到该部分数据。又或者，当Producer客户端内存不够时，如果采取的策略是丢弃消息（另一种策略是block阻塞），消息也会被丢失。抑或，消息产生（异步产生）过快，导致挂起线程过多，内存不足，导致程序崩溃，消息丢失
+
+
+
+         3、客户端丢失 消息
+         	1、Consumer的消费方式主要分为两种：
+        		i）  自动提交offset，Automatic Offset Committing
+        		ii) 手动提交offset，Manual Offset Control
+        	Consumer自动提交的机制是根据一定的时间间隔，将收到的消息进行commit。commit过程和消费消息的过程是异步的。也就是说，可能存在消费过程未成功（比如抛出异常），commit消息已经提交了。此时消息就丢失了。
+
+        	可以保证消息“至少被消费一次”(at least once)。但此时可能出现重复消费的情况
+
+        	1、kafka消息丢失情况
+        		1）生产者 和 broker 丢失消息的情况
+        		  i） ack = 0  不重试（producer 发送消息完 ，不管结果，如果发送失败也就丢失了）
+        		  ii) ack =1 ,leader crash
+        		  	producer发送消息完，只等待leader写入成功就返回，leader crash 了，这时 follower还没来的及同步，消息丢失。
+        	2、生产者和broke阶段消息丢失解决方案
+        		1） 配置ack = all /-1  retries > 1,unclean.leader.election.enable = false;
+        			producer 发送消息完，等待follower同步完再返回，如果异常重试，这时副本的数量可能影响吞吐量，最大不超过5个，
+        			一般三个就足够了，另外，不允许选举ISR以外的副本作为leader.
+        		2) 配置 min.insync.replicas > 1
+
+        			配合 producer acks = -1/all 时使用。min.insync 副本指定必须确认操作成功的最小副本数量，如果 不能满足这个最小值，则生产者将引发异常。
+        		3 ) 失败的offset 单独记录
+        			producer 发送消息，会自动重试，遇到不可回复异常抛出，这时 可以捕获异常记录到数据库缓存，单独处理。
+
+    补充：
+        acks: 生产者客户端根据这个参数来指定分区中必须要有多少个副本收到这条消息之后，生产者才会认为这条消息是写入成功的。
+
+        	1、acks = 1 默认值为1 ，生产者发送消息之后，只要分区的leader副本成功写入消息，那么它就会收到来自服务端的成功响应。
+
+        		如果消息无法写入leader副本，比如在leader副本崩溃，重新选举新的leader副本的过程中，那么生产者就会收到一个错误的响应
+        		，为了避免消息丢失，生产者可以重发消息。如果消息写入leader副本并返回成功响应给生产者，且在被其他follower副本拉取之前
+        		leader副本崩溃，那么此时消息还是会丢失，因为新选举的leader副本并没有这条对应的消息。
+
+        	2、acks = 0 生产者发送消息之后不需要等待任何服务端的响应。如果在消息从发送到写入kafka的过程中出现某些异常，导致kafak没有收到这条消息，
+        	那么生产者也无从得知，消息也就丢失了。
+
+        	3、acks =-1 或 acks = all
+        	生产者在消息发送之后，需要等待ISR中的所有副本都成功写入消息之后才能够接收来自服务器端的成功响应。
+
+        	详细：
+        	acks=-1 leader broker收到消息后，挂起，等待所有ISR列表中的follower返回结果后，再返回ack。-1等效与all。这种配置下，只有leader写入数据到pagecache是不会返回ack的，还需要所有的ISR返回“成功”才会触发ack。如果此时断电，producer可以知道消息没有被发送成功，将会重新发送。如果在follower收到数据以后，成功返回ack，leader断电，数据将存在于原来的follower中。在重新选举以后，新的leader会持有该部分数据。
+
+        	数据从leader同步到follower，需要2步：
+        		数据从pageCache被刷盘到disk。因为只有disk中的数据才能被同步到replica。
+        		数据同步到replica，并且replica成功将数据写入PageCache。在producer得到ack后，哪怕是所有机器都停电，数据也至少会存在于leader的磁盘内
+
+        	说明：ISR的列表的follower，需要配合另一个参数才能更好的保证ack的有效性。ISR是Broker维护的一个“可靠的follower列表”，in-sync Replica列表，broker的配置包含一个参数：min.insync.replicas。
+        	该参数表示ISR中最少的副本数。如果不设置该值，ISR中的follower列表可能为空。此时相当于acks=1。
+
+   1.7  kafka 如果如何避免消息重复
+
+        3、生产者阶段重复场景
+
+        		1、根本原因
+        			生产发送的消息没有收到正确的broke响应，导致producer重试。
+        			producer发出一条消息，broke落盘以后因为网络等种种原因发送端得到一个发送失败的响应或者网络中断，然后producer收到一个可恢复的Exception重试消息导致消息重复。
+
+        		2、生产者发送重复解决方案
+        			1、启动kafka的幂等性
+        			2、ack=0，不重试。（可能会丢消息，适用于吞吐量指标重要性高于数据丢失，例如：日志收集）
+
+        	 4、消费者数据重复场景及解决方案
+
+        	 	1、根本原因
+        	 		数据消费完没有及时提交offset到broker
+        	 	2、场景
+        	 		消息消费端在消费过程中挂掉没有及时提交offset到broke，另一个消费端启动拿之前记录的offset开始消费，由于offset的滞后性可能会导致新启动的客户端有少量重复消费
+        	 	3、解决方案
+        	 		1、每次消费完或者程序退出时手动提交。这可能也没法保证一条重复。
+
+        	 		2、下游做幂等 （落表： 主键或者唯一索引的方式，避免重复数据）
+        				一般的解决方案是让下游做幂等或者尽量每消费一条消息都记录offset，对于少数严格的场景可能需要把offset或唯一ID,例如订单ID和下游状态更新放在同一个数据库里面做事务来保证精确的一次更新或
+    1.8 kafak 保证消息顺序
+
+	1、Kafka保证的是分区有序而不是主题有序
+	 kafaka 同一主题下的分区包含的消息是不同的，分区在存储层面可以看作一个可追加的日志（Log）文件，消息被追加到分区日志文件的时候都会分配一个特定的偏移量（offset）.offset是消息在分区中的唯一标示，Kafak通过它来保证消息在分区内的顺序性。
+
+    个人建议：
+ 	业务上把需要有序的打到同一个partition，也是一种思路，而且广泛使用。因为大多数情况只需要业务上保证有序就可以，不用全局有。
+	partition内部的数据有效性（追加写、offset读）；为了提高Topic的并发吞吐能力，可以提高Topic的partition数，并通过设置partition的replica来保证数据高可靠；但是在多个Partition时，不能保证Topic级别的数据有序性。
+    如果你们就像死磕kafka，但是对数据有序性有严格要求，那我建议：创建Topic只指定1个partition，这样的坏处就是磨灭了kafka最优秀的特性。所以可以思考下是不是技术选型有问题， kafka本身适合与流式大数据量，要求高吞吐，对数据有序性要求不严格的场景。。
 
     3、nsq goland 实现消息队列 （pub/sub模式（发布/订阅，典型的生产者/消费者模式））
 
