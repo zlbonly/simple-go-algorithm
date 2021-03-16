@@ -201,3 +201,98 @@ Redis中链表的主要特性主要如下：
          等操作会在两个哈希表上进行。例如，要在字典中查找一个键的话，程序会先在ht[0]里面进行查找，如果没有找到的话，就会继续到ht[1]里面进行查找。
           另外。在渐进式rehash执行期间，新添加到字典的键值对，一律会被保存到ht[1]里面，而ht[0]则不再进行任何添加操作，这一措施保证了ht[0]包含的键值对
           数量会只减不增，并随着rehash操作的执行而最终变成空表。
+
+3、redis 跳跃表（skiplist）
+    跳跃表（skiplist）是一种有序的数据结构，他通过在每个节点中维持多个指向其他节点的指针，从而达到快速访问节点的目的。跳跃表支持平均O(logN) ,最坏O（N）复杂度的节点查找
+    ，还可以通过顺序性操作来批量处理节点。
+
+    Redis使用跳跃表作为Zset的实现.
+
+    1、 zskiplistNode 节点
+
+    /* ZSETs use a specialized version of Skiplists */
+
+    typedef struct zskiplistNode {
+        sds ele;
+        double score;
+        struct zskiplistNode *backward;
+        struct zskiplistLevel {
+            struct zskiplistNode *forward;
+            unsigned long span;
+        } level[];
+    } zskiplistNode;
+
+    字段说明：
+    i） * backward （后退指针：用于从表尾部向表头部访问节点，每个节点只有一个后退节点，每次只能后退至前一个节点。）
+    2）score 和 ele( *obj) : 分值和成员， score是一个double浮点数，跳跃表中的所有节点都按分值大小进行排序。
+       *obj成员对象是一个指针，指向一个字符串对象，而字符串对象保存着一个SDS值。
+       分数值相同的节点，按照成员对象在字典序中的大小来进行排序。
+    3） 层level
+           跳跃表的节点level数组可以包含多个元素，每个元素都包含一个指向其他节点的指针和 跨度。
+           每次创建新的跳跃表节点的时候，redis都会根据幂次定律随机生成一个介于1～32的值作为level数组的大小，这个值就是level
+
+        zskiplistNode *forward： 每个层都有一个指向表尾方向的前进指针，用于从表头向表尾方向访问节点。
+        unsigned long span： 层的跨度用于记录两个节点之间的距离。
+
+
+    2、zskiplist 用于保存跳跃表节点 （ 跳表结构管理节点）
+    typedef struct zskiplist {
+        struct zskiplistNode *header, *tail;
+        unsigned long length; //     // 长度
+        int level; //     // 跳表高度(所有节点最高层高)
+    } zskiplist;
+
+    3、zset结构
+
+    typedef struct zset {
+        dict *dict;
+        zskiplist *zsl;
+    } zset;
+
+    3、zset 之所以使用跳跃表 本质在于解决 "查找问题"
+        普通链表结构： value1(score1) -> value2(score2) -> value3(score3) ->value4(score4)
+        我们需要这个链表按照 score 值进行排序，这也就意味着，当我们需要添加新的元素时，我们需要定位到插入点，这样才可以继续保证链表是有序的，
+        通常我们会使用 二分查找法，但二分查找是有序数组的，链表没办法进行位置定位，
+        我们除了遍历整个找到第一个比给定数据大的节点为止 （时间复杂度 O(n)) 似乎没有更好的办法。
+
+    但假如我们每相邻两个节点之间就增加一个指针，让指针指向下一个节点,这样所有新增的指针连成了一个新的链表，但它包含的数据却只有原来的一半
+    样所有新增的指针连成了一个新的链表，但它包含的数据却只有原来的一半
+    现在假设我们想要查找数据时，可以根据这条新的链表查找，如果碰到比待查找数据大的节点时，再回到原来的链表中进行查找，
+
+    zset跳跃表就是利用这一原理。
+
+   4、新增和更新跳跃表节点
+        skiplist 为了避免插入节点后，顺序性被打乱需要在平衡问题，它不要求上下相邻两层链表之间的节点个数（1：2）有严格的对应关系，而是 为每个节点随机出一个层数(level)。
+        比如，一个节点随机出的层数是 3，那么就把它链入到第 1 层到第 3 层这三层链表中
+        参考（https://segmentfault.com/a/1190000022028505）
+
+
+4、redis 压缩列表(ziplist) 和 quicklist(快速列表)
+    压缩列表是Redis 为了节约内存而开发的，是由一系列特殊编码的连续内存块组成的顺序型数据结构。
+        Redis的有序集合、哈希以及列表都直接或者间接使用了压缩列表。当有序集合或哈希的元素数目比较少，
+        且元素都是短字符串时，Redis便使用压缩列表作为其底层数据存储方式。列表使用快速链表（quicklist）数据结构存储，
+        而快速链表就是双向链表与压缩列表的组合
+
+        1、字节数组（Redis使用字节数组表示一个压缩列表，字节数组逻辑划分为多个字段）
+            zlbytes | zltail | zllen | entry1 | entry2 | ......zlend
+
+            1、zlbytes：压缩列表的字节长度，占4个字节，因此压缩列表最长(2^32)-1字节；
+            2、zltail：压缩列表尾元素相对于压缩列表起始地址的偏移量，占4个字节；
+            3、zllen：压缩列表的元素数目，占两个字节；那么当压缩列表的元素数目超过(2^16)-1怎么处理呢？此时通过zllen字段无法获得压缩列表的元素数目，必须遍历整个压缩列表才能获取到元素数目；
+            4、entryX：压缩列表存储的若干个元素，可以为字节数组或者整数；entry的编码结构后面详述；
+            5、zlend：压缩列表的结尾，占一个字节，恒为0xFF。
+
+
+        2、压缩列表节点
+           每个压缩列表节点都是由 previous_entry_length ,encoding,content三个部分组成。
+            i) previous_entry_length 属性以字节为单位，记录了压缩列表中前一个节点的长度。
+                主要用于压缩列表遍历（使用指向当前节点起始节点指针C，减去当前节点previous_entry_length属性的值，就可以得出一个指向前一个
+                节点起始地址的指针p）。
+            ii） encoding： 记录content属性所保存数据的类型及长度
+            iii) content : 节点保存的值 （可以是字节数组/整数），具体类型和长度 由节点encoding属性决定。
+
+
+       3、连锁更新 （新增和删除压缩列表节点，可能导致压缩列表执行空间重分配操作，但是概率极低，redis本身忽略，）
+        参考：
+        https://segmentfault.com/a/1190000017328042
+
