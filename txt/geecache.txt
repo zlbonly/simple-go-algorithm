@@ -1,0 +1,44 @@
+
+1、参照groupcache
+
+ 1、参照 groupcache 自实现分布式缓存
+
+ 	1、实现缓存淘汰算法（LRU）
+ 	2、单机并发缓存
+ 		使用sync.Mutex 封装 （1）中 LRU的方法，以便支持并发读写
+ 		抽象一个只读数据结构 ByteView 来表示缓存值
+ 		type ByteView struct {
+ 			b []byte
+ 		}
+
+ 		// Len returns the view's length
+ 		func (v ByteView) Len() int {
+ 			return len(v.b)
+ 		}
+
+ 	3、基于HTTP 通信机制  实现单机节点HTTP server 搭建
+
+ 		代码结构如下
+ 		geecache/
+     		|--lru/
+         		|--lru.go  // lru 缓存淘汰策略
+     		|--byteview.go // 缓存值的抽象与封装
+     		|--cache.go    // 并发控制
+     		|--geecache.go // 负责与外部交互，控制缓存存储和获取的主流程
+ 			|--http.go     // 提供被其他节点访问的能力(基于http)
+
+
+ 			主要实现  http.Handler的 ServeHTTP 接口
+
+
+ 	4、	实现一致性hash算法
+
+ 	5、分布式节点：
+ 			主要实现：注册节点(Register Peers)，借助一致性哈希算法选择节点。
+ 					实现 HTTP 客户端，与远程节点的服务端通信。
+
+ 		参考 https://geektutu.com/post/geecache-day5.html
+
+ 	6、	防止缓存击穿
+ 	7、使用protobuf通信
+
