@@ -9,7 +9,7 @@
 	 	1） redis zset
 	 	2) 时间轮（timewheel,参考kafka时间轮）
 	 	3） rabbitmq+ttl （通过rabbitmq的死信队列实现）
-
+	 	4） 定时任务cron (最小堆 nsq内部的延时消息 就是使用最小堆（构建了四叉堆）)
 
 	2、redis 有序列表zset 的实现（参考 simple-delay-queue的实现方式）
 	
@@ -76,4 +76,23 @@
 		 2、提供TCP长连的API，实现push或者long-polling的消息reserve方法。
 		 3、拥有自己的存储方案（内嵌数据库、自定义数据结构写文件），确保消息的持久化。			
 
-   	3、基于时间轮的 延迟队列实现（主要是kafak的时间轮算法）
+   	2、基于时间轮的 延迟队列实现（主要是kafak的时间轮算法）
+   	    1） 自实现时间轮(https://github.com/zlbonly/timewheel)
+
+           https://github.com/zlbonly/timewheel/blob/master/pics/timewheel.jpeg
+           #### 1、timewheel  维护 slots[] 槽位（每个槽内存放 延时任务的双向链表），slotNum  时间轮的槽位数量，interva了
+           时间轮中指针每隔多久往前移动一格， 然后根据 Task 维护任务的延迟时间 dealy ， 计算 在时间轮中的位置pos，和圈数
+           delaySeconds := int(d.Seconds())  // 延时时间
+           intervalSeconds := int(tw.interval.Seconds()) // 移动步长
+           cycle = int(delaySeconds / intervalSeconds / tw.slotNum)  // 圈数
+           pos = int(tw.currentPos+delaySeconds/intervalSeconds) % tw.slotNum  // 时间轮中所在位置
+
+           然后根据 定时器轮询 获取相应槽位，并遍历对应的 任务链表，取出具体任务 执行。
+
+
+           #### 缺点：
+           1、缺点： 时间轮没有分级，会导致单个槽点 任务双向链表过长，时间轮空转，没有分级概念
+
+   	    2） kafak时间轮
+   	      参考连接  https://juejin.cn/post/6844904110399946766
+
