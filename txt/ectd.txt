@@ -1,0 +1,153 @@
+etcd 安装和使用
+
+	https://github.com/etcd-io/etcd/releases/download/v3.4.14/etcd-v3.4.14-linux-amd64.tar.gz
+	tar xzvf etcd-v3.4.14-linux-amd64.tar.gz
+	mv etcd-v3.1.5-linux-amd64 /usr/local/etcd
+
+	解压后是一些文档和两个二进制文件etcd和etcdctl。etcd是server端，etcdctl是客户端。
+
+	后台启动运行 nohup ./etcd > /tmp/etcd.log 2>&1
+
+    1、etcd
+        etcd 可以作为服务注册与发现和键值对存储组件。
+        使用 etcd 的常见分布式场景包括键值对存储、服务注册与发现、消息订阅与发布、分布式锁等
+
+	2、 etcd 中如何实现分布式事务？
+
+	1、etcd 执行事务方式
+	常见的关系型数据库如 MySQL ，其 InnoDB 事务的实现基于锁实现数据库事务。事务操作执行时，需要获取对应数据库记录的锁，才能进行操作；如果发生冲突，事务会阻塞，甚至会出现死锁。
+	在整个事务执行的过程中，客户端与 MySQL 多次交互，MySQL 为客户端维护事务所需的资源，直至事务提交。
+	而 etcd 中的事务实现则是基于CAS（Compare and Swap，即比较并交换） 方式。
+
+    其对应的语法为If-Then-Else。etcd 允许用户在一次修改中批量执行多个操作，即这一组操作被绑定成一个原子操作，并共享同一个修订号。其写法类似 CAS，如下所示：
+    Txn().If(cond1, cond2, ...).Then(op1, op2, ...,).Else(op1, op2)
+
+    需要注意的是：
+        在 etcd 事务执行过程中，客户端与 etcd 服务端之间没有维护事务会话。冲突判断及其执行过程作为一个原子过程来执行，因此 etcd 事务不会发生阻塞，无论事务执行成功还是失败都会返回。当发生冲突导致执行失败时，需要应用进行重试，业务代码需要考虑这部分的重试逻辑。
+
+        例子：
+            etcd 事务的实现基于乐观锁，涉及两次事务操作，第一次事务利用原子性同时获取发送方和接收方的当前账户金额。第二次事务发起转账操作，冲突检测 ModRevision 是否发生变化，如果没有变化则正常提交事务；若发生了冲突，则需要进行重试。
+
+        2、etcd 社区基于事务特性，实现了一个简单的事务框架 STM
+
+        3、etcd 事务隔离级别
+
+        etcd 的事务可以看作是一种“微事务”，在它之上，可以构建出各种隔离级别的事务。STM 的事务级别通过 stmOption 指定，位于 clientv3/concurrency/stm.go 中，分别为 SerializableSnapshot、Serializable、RepeatableReads 和 ReadCommitted
+
+        stm 根据隔离级别的不同 实行不同的检测条件。
+        举例子：
+           1、 Serializable 串行读
+            串行化调用的实现类为 stmSerializable，当出现读写锁冲突的时候，后续事务必须等前一个事务执行完成，才能继续执行。这就相当于在事务开始时，
+            对 etcd 做了一个快照，这样它读取到的数据就不会受到其他事务的影响，从而达到事务串行化（Serializable）执行的效果。
+
+            事务中第一次读操作完成时，保存当前版本号 Revision；后续其他读请求会带上这个版本号，获取指定 Revision 版本的数据。这确保了该事务所有的读操作读到的都是同一时刻的内容。
+
+       2、 SerializableSnapshot串行化快照读
+        SerializableSnapshot串行化快照隔离，提供可序列化的隔离，并检查写冲突。etcd 默认采用这种隔离级别，串行化快照隔离是最严格的隔离级别，可以避免幻影读。其读操作与冲突检测的过程如下。
+        读操作
+        与 Serializable 串行化读类似。事务中的第一个 Get 操作发生时，保存服务器返回的当前 Revision；后续对其他 keys 的 Get 操作，指定获取 Revision 版本的 value。
+        在事务提交时，检查事务中 Get 的 keys 以及要修改的 keys 是否被改动过。
+        SerializableSnapshot 不仅确保了读取过的数据是最新的，同时也确保了要写入的数据同样没有被其他事务更改过，是隔离的最高级别。
+
+    3、etcd实现分布式锁
+
+            源码
+        原理：https://github.com/etcd-io/etcd/blob/master/client/v3/concurrency/mutex.go
+        1、基于 ETCD 实现分布式锁分析
+        ETCD 分布式锁的实现
+
+        1、Lease 机制：租约机制（TTL，Time To Live），Etcd 可以为存储的 key-value 对设置租约，
+        当租约到期，key-value 将失效删除；同时也支持续约，通过客户端可以在租约到期之前续约，
+        以避免 key-value 对过期失效。Lease 机制可以保证分布式锁的安全性，为锁对应的 key 配置租约，
+        即使锁的持有者因故障而不能主动释放锁，锁也会因租约到期而自动释放。
+
+        2、Revision 机制：每个 key 带有一个 Revision 号，每进行一次事务加一，它是全局唯一的，
+        通过 Revision 的大小就可以知道进行写操作的顺序。在实现分布式锁时，多个客户端同时抢锁，
+        根据 Revision 号大小依次获得锁，可以避免 “羊群效应” ，实现公平锁。
+
+        3、Prefix 机制：即前缀机制。例如，一个名为 /etcdlock 的锁，两个争抢它的客户端进行写操作，
+        实际写入的 key 分别为：key1="/etcdlock/UUID1"，key2="/etcdlock/UUID2"，
+        其中，UUID 表示全局唯一的 ID，确保两个 key 的唯一性。写操作都会成功，但返回的 Revision 不一样，
+        那么，如何判断谁获得了锁呢？通过前缀 /etcdlock 查询，返回包含两个 key-value 对的的 KeyValue 列表，
+        同时也包含它们的 Revision，通过 Revision 大小，客户端可以判断自己是否获得锁。
+
+        4、Watch 机制：即监听机制，Watch 机制支持 Watch 某个固定的 key，也支持 Watch 一个范围（前缀机制），
+        当被 Watch 的 key 或范围发生变化，客户端将收到通知；在实现分布式锁时，如果抢锁失败，
+        可通过 Prefix 机制返回的 KeyValue 列表获得 Revision 比自己小且相差最小的 key（称为 pre-key），
+        对 pre-key 进行监听，因为只有它释放锁，自己才能获得锁，如果 Watch 到 pre-key 的 DELETE 事件，
+        则说明 pre-key 已经释放，自己已经持有锁。
+
+
+
+    4、etcd 之 raft算法
+
+        etcd使用raft算法实现数据一致性
+
+     1、raft算法概述
+        Raft算法使用leader节点来处理一致性问题。leader节点接收来自客户端的请求日志数据，然后同步到集群中其他节点进行复制，当日志已经同步到
+        超过半数以上节点的时候，leader节点在通知集群中其他节点 那些日志已经复制成功，可以提交到raft状态机中执行。
+
+        raft算法将要解决的一致性问题分为了以下几个子问题：
+            1、leader 选举： 集群中必须且最多存在一个leader节点。
+            2、日志复制：
+                leader节点接收来自客户端的请求然后将这些请求序列化成日志数据在同步到集群中的其他节点。
+            3、安全性
+                如果一个节点已经将一条提交过的数据输入到Raft状态机中执行了，那么其他节点不可能在将相同索引的另一条日志数据输入到raft状态机中执行。
+
+
+     2、raft状态机状态
+       1、Leader：领导者，一个集群里只能存在一个Leader。
+       2、Follower：跟随者，follower是被动的，一个客户端的修改数据请求如果发送到Follower上面时，会首先由Follower重定向到Leader上，
+       3、Candidate：参与者，一个节点切换到这个状态时，将开始进行一次新的选举。
+       4、任期(term)
+            每一次开始一次新的选举时，称为一个"任期"。每个任期都有一个对应的整数与之关联，称为"任期号"，任期号用单词"Term"表示，这个值是一个严格递增的整数值
+
+
+      5、节点状态机切换流程
+        参考图： https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/raft%E7%8A%B6%E6%80%81%E6%9C%BA.jpg
+
+        上图中标记了状态切换的6种路径，下面做一个简单介绍，后续都会展开来详细讨论。
+       1、 start up：起始状态，节点刚启动的时候自动进入的是follower状态。
+       2、times out, starts election：follower在启动之后，将开启一个选举超时的定时器，当这个定时器到期时，将切换到candidate状态发起选举。
+       3、times out, new election：进入candidate 状态之后就开始进行选举，但是如果在下一次选举超时到来之前，都还没有选出一个新的leade，那么还会保持在candidate状态重新开始一次新的选举。
+       4、receives votes from majority of servers：当candidate状态的节点，收到了超过半数的节点选票，那么将切换状态成为新的leader。
+       5、discovers current leader or new term：candidate状态的节点，如果收到了来自leader的消息，或者更高任期号的消息，都表示已经有leader了，将切换回到follower状态。
+       6、discovers server with higher term：leader状态下如果收到来自更高任期号的消息，将切换到follower状态。这种情况大多数发生在有网络分区的状态下。
+
+
+       6、节点通信：
+       raft节点之间通过RPC请求来互相通信，主要有以下两类RPC请求。RequestVote RPC用于candidate状态的节点进行选举之用，
+       而AppendEntries RPC由leader节点向其他节点复制日志数据以及同步心跳数据的
+
+      7 raft 选举过程
+        现在来讲解leader选举的流程。raft算法是使用心跳机制来触发leader选举的。
+
+        1）在节点刚开始启动时，初始状态是follower状态。一个follower状态的节点，只要一直收到来自leader或者candidate的正确RPC消息的话，将一直保持在follower状态。leader节点通过周期性的发送心跳请求（一般使用带有空数据的AppendEntries RPC来进行心跳）来维持着leader节点状态。每个follower同时还有一个选举超时（election timeout）定时器，
+        如果在这个定时器超时之前都没有收到来自leader的心跳请求，那么follower将认为当前集群中没有leader了，将发起一次新的选举。
+
+        发起选举时，follower将递增它的任期号然后切换到candidate状态。然后通过向集群中其它节点发送RequestVote RPC请求来发起一次新的选举。一个节点将保持在该任期内的candidate状态下，
+        直到以下情况之一发生。
+        1）该candidate节点赢得选举，即收到超过半数以上集群中其它节点的投票。
+        2）另一个节点成为了leader。
+        3）选举超时到来时没有任何一个节点成为leader。
+        下面来逐个分析以上几种情况。
+        i）第一种情况，如果收到了集群中半数以上节点的投票，那么此时candidate节点将成为新的leader。每个节点在一个任期中只能给一个节点投票，而且遵守"先来后到"的原则。这样就保证了，每个任期最多只有一个节点会赢得选举成为leader。但并不是每个进行选举的candidate节点都会给它投票，在后续的"选举安全性"一节中将展开讨论这个问题。
+            当一个candidate节点赢得选举成为leader后，它将发送心跳消息给其他节点来宣告它的权威性以阻止其它节点再发起新的选举。
+        ii）第二种情况，当candidate节点等待其他节点时，如果收到了来自其它节点的AppendEntries RPC请求，同时做个请求中带上的任期号不比candidate节点的小，那么说明集群中已经存在leader了，
+            此时candidate节点将切换到follower状态；但是，如果该RPC请求的任期号比candidate节点的小，那么将拒绝该RPC请求继续保持在candidate状态。
+        ii） 第三种情况，一个candidate节点在选举超时到来的时候，既没有赢得也没有输掉这次选举。这种情况发生在集群节点数量为偶数个，同时有两个candidate节点进行选举，
+            而两个节点获得的选票数量都是一样时。当选举超时到来时，如果集群中还没有一个leader存在，那么candidate节点将继续递增任期号再次发起一次新的选举。这种情况理论上可以一直无限发生下去。
+        为了减少第三种情况发生的概率，每个节点的选举超时时间都是随机决定的，一般在150~300毫秒之间，这样两个节点同时超时的情况就很罕见了。
+
+
+      8、日志复制
+           1、 每个客户端的请求都会被重定向发送给leader，这些请求最后都会被输入到raft算法状态机中去执行。
+           2、 leader在收到这些请求之后，会首先在自己的日志中添加一条新的日志条目。
+           3、在本地添加完日志之后，leader将向集群中其他节点发送AppendEntries RPC请求同步这个日志条目，当这个日志条目被成功复制之后（什么是成功复制，下面会谈到）
+                ，leader节点将会将这条日志输入到raft状态机中，然后应答客户端。
+            一条日志如果被leader同步到集群中超过半数的节点，那么被称为"成功复制"
+
+            日志复制流程参考：
+                https://mp.weixin.qq.com/s/Gw6Q0CqV5RncFO2hiFBP6A
+
+
