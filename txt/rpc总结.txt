@@ -1,0 +1,126 @@
+五、RPC
+    RPC 基本概念
+    	1、RPC(Remote Procdure Call)
+
+    	RPC(Remote Procedure Call)，远程过程调用，大部分的RPC框架都遵循如下三个开发步骤：
+    	1. 定义一个接口说明文件：描述了对象(结构体)、对象成员、接口方法等一系列信息；
+    	2. 通过RPC框架所提供的编译器，将接口说明文件编译成具体的语言文件；
+    	3. 在客户端和服务器端分别引入RPC编译器所生成的文件，即可像调用本地方法一样调用服务端代码；
+
+    	rpc 通信流程如图：
+    		https://img-blog.csdn.net/20170207141803075?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvbGloYW8yMQ==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/SouthEast
+
+    	通信过程包括以下几个步骤：
+    		1、客户过程以正常方式调用客户桩（client stub，一段代码）；
+    		2、客户桩生成一个消息，然后调用本地操作系统；
+    		3、客户端操作系统将消息发送给远程操作系统；
+    		4、远程操作系统将消息交给服务器桩（server stub，一段代码）；
+    		5、服务器桩将参数提取出来，然后调用服务器过程；
+    		6、服务器执行要求的操作，操作完成后将结果返回给服务器桩；
+    		7、服务器桩将结果打包成一个消息，然后调用本地操作系统；
+    		8、服务器操作系统将含有结果的消息发送回客户端操作系统；
+    		9、客户端操作系统将消息交给客户桩；
+    		10、客户桩将结果从从消息中提取出来，返回给调用它的客户过程；
+
+    	1、Thrift
+    		thrift主要用于各个服务之间的RPC通信，支持跨语言。thrift是一个典型的CS结构，客户端和服务端可以使用不同的语言开发，thrift通过IDL(Interface Description Language)来关联客户端和服务端
+
+    		thrift通信流程：
+    			Thrift实际上是实现了C/S模式，通过代码生成工具将thrift文生成服务器端和客户端代码（可以为不同语言），从而实现服务端和客户端跨语言的支持。用户在Thirft文件中声明自己的服务，这些服务经过编译后会生成相应语言的代码文件，然后客户端调用服务，服务器端提服务便可以了。
+
+
+    	 1.1 thrift 网络通信
+
+    	 	thrift的网路通信是自己开发实现的，架构图如下：
+    	 	如图：https://images2018.cnblogs.com/blog/645085/201803/645085-20180304155305568-1935823842.png
+
+    	 	协议栈的其他模块都是Thrift的运行时模块：
+
+    			底层IO模块，负责实际的数据传输，包括Socket，文件，或者压缩数据流等。
+
+    			TTransport负责以字节流方式发送和接收Message，是底层IO模块在Thrift框架中的实现，每一个底层IO模块都会有一个对应TTransport来负责Thrift的字节流(Byte Stream)数据在该IO模块上的传输。例如TSocket对应Socket传输，TFileTransport对应文件传输。
+
+    			TProtocol主要负责结构化数据组装成Message，或者从Message结构中读出结构化数据。TProtocol将一个有类型的数据转化为字节流以交给TTransport进行传输，或者从TTransport中读取一定长度的字节数据转化为特定类型的数据。如int32会被TBinaryProtocol Encode为一个四字节的字节数据，或者TBinaryProtocol从TTransport中取出四个字节的数据Decode为int32。
+
+    			TServer负责接收Client的请求，并将请求转发到Processor进行处理。TServer主要任务就是高效的接受Client的请求，特别是在高并发请求的情况下快速完成请求。
+
+    			Processor(或者TProcessor)负责对Client的请求做出相应，包括RPC请求转发，调用参数解析和用户逻辑调用，返回值写回等处理步骤。Processor是服务器端从Thrift框架转入用户逻辑的关键流程。Processor同时也负责向Message结构中写入数据或者读出数据。
+
+    	 	1、TProtocol（协议层），定义数据传输格式，例如：
+    		TBinaryProtocol：二进制格式；
+    		TCompactProtocol：压缩格式；
+    		TJSONProtocol：JSON格式；
+    		TSimpleJSONProtocol：提供JSON只写协议, 生成的文件很容易通过脚本语言解析；
+    		TDebugProtocol：使用易懂的可读的文本格式，以便于debug
+
+    		2、TTransport（传输层），定义数据传输方式，可以为TCP/IP传输，内存共享或者文件共享等）被用作运行时库。
+    		TSocket：阻塞式socker；
+    		TFramedTransport：以frame为单位进行传输，非阻塞式服务中使用；
+    		TFileTransport：以文件形式进行传输；
+    		TMemoryTransport：将内存用于I/O，java实现时内部实际使用了简单的ByteArrayOutputStream；
+    		TZlibTransport：使用zlib进行压缩， 与其他传输方式联合使用，当前无java实现；
+
+    		3、Thrift支持的服务模型
+
+    		TSimpleServer
+    			简单的单线程服务模型，常用于测试。只在一个单独的线程中以阻塞I/O的方式来提供服务。所以它只能服务一个客户端连接，其他所有客户端在被服务器端接受之前都只能等待。
+    		TNonblockingServer
+    			它使用了非阻塞式I/O，使用了java.nio.channels.Selector，通过调用select()，它使得程序阻塞在多个连接上，而不是单一的一个连接上。TNonblockingServer处理这些连接的时候，要么接受它，要么从它那读数据，要么把数据写到它那里，然后再次调用select()来等待下一个准备好的可用的连接。通用这种方式，server可同时服务多个客户端，而不会出现一个客户端把其他客户端全部“饿死”的情况。缺点是所有消息是被调用select()方法的同一个线程处理的，服务端同一时间只会处理一个	消息，并没有实现并行处理。
+    		THsHaServer（半同步半异步server）
+    			针对TNonblockingServer存在的问题，THsHaServer应运而生。它使用一个单独的线程专门负责I/O，同样使用java.nio.channels.Selector，通过调用select()。然后再利用一个独立的worker线程池来处理消息。只要有空闲的worker线程，消息就会被立即处理，因此多条消息能被并行处理。效率进一步得到了提高。
+    		TThreadedSelectorServer
+    			它与THsHaServer的主要区别在于，TThreadedSelectorServer允许你用多个线程来处理网络I/O。它维护了两个线程池，一个用来处理网络I/O，另一个用来进行请求的处理。
+    		TThreadPoolServer
+    			它使用的是一种多线程服务模型，使用标准的阻塞式I/O。它会使用一个单独的线程来接收连接。一旦接受了一个连接，它就会被放入ThreadPoolExecutor中的一个worker线程里处理。worker线程被绑定到特定的客户端连接上，直到它关闭。一旦连接关闭，该worker线程就又回到了线程池中。
+    			这意味着，如果有1万个并发的客户端连接，你就需要运行1万个线程。所以它对系统资源的消耗不像其他类型的server一样那么“友好”。此外，如果客户端数量超过了线程池中的最大线程数，在有一个worker线程可用之前，请求将被一直阻塞在那里。
+    			如果提前知道了将要连接到服务器上的客户端数量，并且不介意运行大量线程的话，TThreadPoolServer可能是个很好的选择。
+
+    	 4、thrift 如何实现多语言通信
+    	 	1、数据传输使用socket(多种语言均支持)，数据在以特定的格式(String等)发送，接收方语言进行解析
+    	 	2、定义thrift的文件，由thrift文件(IDL)生成双方语言的接口、model，在生成的model以及接口中会有解码编码的代码
+
+     2、grpc
+            grpc 是一个高性能，开源和通用的rpc框架，面向移动和HTTP/2设计。
+
+            		调用模型
+
+            		1、客户端（gRPC Stub）调用 A 方法，发起 RPC 调用。
+
+            		2、对请求信息使用 Protobuf 进行对象序列化压缩（IDL）。
+
+            		3、服务端（gRPC Server）接收到请求后，解码请求体，进行业务逻辑处理并返回。
+
+            		4、对响应结果使用 Protobuf 进行对象序列化压缩（IDL）。
+
+            		5、客户端接受到服务端响应，解码请求体。回调被调用的 A 方法，唤醒正在等待响应（阻塞）的客户端调用并返回响应结果。
+
+
+            		Protocol Buffer 3 :是一种类似XML但更灵活和高效的结构化数据存储格式。
+            		protobuf会对proto协议文件进行序列化，最终转换成二进制数据
+            		优点： 快：编解码基本都是位运算，也没有复杂的嵌套关系，速度快。
+
+
+            		Http2协议详解：（HTTP/2（超文本传输协议第2版，最初命名为HTTP2.0），是HTTP协议的第二个主要版本）
+
+            		HTTP1.x的缺点：
+            		1、HTTP/1.0一次只允许在一个TCP连接上发起一个请求，HTTP/1.1使用的流水线技术也只能部分处理请求并发，仍然会存在队列头阻塞问题，因此客户端在需要发起多次请求时，通常会采用建立多连接来减少延迟。
+            		即（在 HTTP/1.1 协议中 「浏览器客户端在同一时间，针对同一域名下的请求有一定数量限制。超过限制数目的请求会被阻塞」）
+            		2、单向请求，只能由客户端发起。
+            		3、请求报文与响应报文首部信息冗余量大。
+            		4、数据未压缩，导致数据的传输量大。
+
+            		HTTP2.0特点：
+
+            		1、多路复用
+            			多路复用允许同时通过单一的 HTTP/2 连接发起多重的请求-响应消息。
+
+            		2、二进制分帧传
+            			在HTTP1.x中，我们是通过文本的方式传输数据，而HTTP2.中 在 应用层(HTTP/2)和传输层(TCP or UDP)之间增加一个二进制分帧层，采用二进制传输。其中HTTP1.x的首部信息会被封装到Headers帧，而Request Body则封装到Data帧。
+
+            		3、服务器Push
+            			在HTTP2.0中，服务端可以在客户端某个请求后，主动推送其他资源。
+
+
+            源码阅读参考https://www.bookstack.cn/read/grpc-read/12-grpc%20%E6%95%B0%E6%8D%AE%E6%B5%81%E8%BD%AC.md
+
+     3、自己动手实现geerpc(github)
