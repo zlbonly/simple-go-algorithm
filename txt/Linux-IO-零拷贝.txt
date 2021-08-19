@@ -38,7 +38,8 @@ Linux 基础知识
 	
 	2、首先我们来看看一次网络请求中服务端做了哪些操作。
 
-		参考图片地址：https://segmentfault.com/img/bVbZMAV
+		参考图片地址： https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/io-1.jpeg
+
 
 		在上图中，每一个客户端会与服务端建立一次socket连接，而服务端获取连接后，对于所有的数据的读取都得经过操作系统的内核，通过系统调用内核将数据复制到用户进程的缓冲区，然后才完成客户端的进程与客户端的交互。那么根据系统调用的方式的不同分为阻塞和非阻塞，根据系统处理应用进程的方式不同分为同步和异步。
 
@@ -52,13 +53,13 @@ Linux 基础知识
 
 	2.1 阻塞I/O (Blocking IO )
 
-	参考图：https://segmentfault.com/img/bVbZMAY
+	参考图：https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/io-2.png
 
 		每一次客户端产生的socket连接实际上是一个文件描述符fd,而每一个用户进程读取的实际上也是一个个文件描述符fd,在该时期的系统调用函数会等待网络请求的数据的到达和数据从内核空间复制到用户进程空间，也就是说，无论是第一阶段的IO调用还是第二阶段的IO执行都会阻塞，那么就像图中所画的一样，对于多个客户端连接，只能开辟多个线程来处理。
 
 	2.2 非阻塞IO模型
 		对于阻塞IO模型来说最大的问题就体现在阻塞2字上，那么为了解决这个问题，系统的内核因此发生了改变。在内核中socket支持了非阻塞状态。既然这个socket是不阻塞的了，那么就可以使用一个进程处理客户端的连接，该进程内部写一个死循环，不断的询问每一个连接的网络数据是否已经到达。此时轮询发生在用户空间，但是该进程依然需要自己处理所有的连接，所以该时期为同步非阻塞IO时期，也即为NIO。
-		参考图：https://segmentfault.com/img/bVbZMA6
+		参考图：https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/io-3.png
 
     	阻塞不阻塞 主要是针对系统调用时 调用者是否被挂起阻塞
 
@@ -70,7 +71,7 @@ Linux 基础知识
 
 				为了让内核帮助用户进程完成文件描述符的遍历，内核增加了系统调用select/poll(select与poll本质上没有什么不同，就是poll减少了文件描述符的个数限制)，现在用户进程只需要调用select系统调用函数，并且将文件描述符全部传递给select就可以让内核帮助用户进程完成所有的查询，然后将数据准备好的文件描述符再返回给用户进程，最后用户进程依次调用其他系统调用函数完成IO的执行过程
 				参考流程图：
-					https://segmentfault.com/img/bVbZMBe
+					https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/io-4.png
 
 
 					2.3.1 select
@@ -105,6 +106,8 @@ Linux 基础知识
 							2、同时使用不同字段分别标注关注事件和发生事件，来避免重复初始化。
 
 
+                C10k问题：
+                    ：对于Web 1.0/2.0时代的操作系统，传统的同步阻塞I/O模型处理方式都是requests per second。当创建的进程或线程多了，数据拷贝频繁（缓存I/O、内核将数据拷贝到用户进程空间、阻塞，进程/线程上下文切换消耗大， 导致操作系统崩溃，这就是C10K问题的本质。
 
 			2、epoll 
 
@@ -117,7 +120,7 @@ Linux 基础知识
 				2、第二个问题，内核引入了事件驱动机制(类似于中断)，不再主动遍历所有的文件描述符，而是通过事件驱动的方式主动通知内核该文件描述符的数据准备完毕了，然后内核就将其写入链表中即可。
 
 				参考流程图：
-					https://segmentfault.com/img/bVbZMBh
+					https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/io-5.png
 
 
 			 	epoll详细实现：
@@ -182,12 +185,12 @@ Linux 基础知识
 	2.4、信号驱动式IO
 		在IO执行的数据准备阶段，不会阻塞用户进程。当用户进程需要等待数据的时候，会向内核发送一个信号，告诉内核需要数据，然后用户进程就继续做别的事情去了，而当内核中的数据准备好之后，内核立马发给用户进程一个信号，用户进程收到信号之后，立马调用recvfrom，去查收数据。该IO模型使用的较少。
 		参考流程图：
-			https://segmentfault.com/img/bVbZMBl
+			https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/io-6.png
 
 	2.5	异步IO(AIO)
 		应用进程通过 aio_read 告知内核启动某个操作，并且在整个操作完成之后再通知应用进程，包括把数据从内核空间拷贝到用户空间。信号驱动 IO 是内核通知我们何时可以启动一个 IO 操作，而异步 IO 模型是由内核通知我们 IO 操作何时完成。是真正意义上的无阻塞的IO操作，但是目前只有windows支持AIO，linux内核暂时不支持。
 
-		参考流程图：https://segmentfault.com/img/bVbZMBt
+		参考流程图：https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/io-7.png
 
 2、Linux零拷贝技术
 
