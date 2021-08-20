@@ -1,4 +1,5 @@
 goland面试题源码分析：
+https://www.kancloud.cn/aceld/golang/1858955
 
 1、简单介绍sync.mutex
 
@@ -743,7 +744,6 @@ func changeSlice(s []int){
     必然不会逃逸
     • 指针被未发生逃逸的变量引用；
     • 仅仅在函数内对变量做取址操作，而未将指针传出
-
 
 
     4、逃逸分析的好处
