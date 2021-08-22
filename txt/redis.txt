@@ -1,6 +1,15 @@
 
    Redis 实现和分析
 
+1、Redis支持哪几种数据类型？
+        1、string：最基本的数据类型，二进制安全的字符串，最大512M。
+            介绍SSD
+        2、list：按照添加顺序保持顺序的字符串列表。
+        3、set：无序的字符串集合，不存在重复的元素。
+        4、sorted set：已排序的字符串集合。
+        5、hash：key-value对的一种集合。
+
+
  一、基本数据结构
 1、简单动态字符串 （SDS）
 Redis没有直接使用 C 语言的字符串，而是自己创建了名为 SDS (simple dynamic string, SDS) 的字符串。
@@ -469,7 +478,7 @@ Redis中链表的主要特性主要如下：
             参考8
 
         * Cluster模式
-
+            Redis集群没有使用一致性hash,而是引入了哈希槽的概念，当需要在 Redis 集群中放置一个 key-value 时，根据 CRC16(key) mod 16384的值，决定将一个key放到哪个桶中。
             Cluster 集群模式（Redis官方）
             Redis Cluster是一种服务器 Sharding 技术，3.0版本开始正式提供。
             Redis 的哨兵模式基本已经可以实现高可用，读写分离 ，但是在这种模式下每台 Redis 服务器都存储相同的数据，很浪费内存，所以在 redis3.0上加入了 Cluster 集群模式，实现了 Redis 的分布式存储，也就是说每台 Redis 节点上存储不同的内容。
