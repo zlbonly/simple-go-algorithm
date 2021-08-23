@@ -25,6 +25,7 @@
      redisObject图：
     https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/redisObject.jpeg
 
+    参考链接：https://cloud.tencent.com/developer/news/645221
 2、Redis支持哪几种数据类型？
         1、string：最基本的数据类型，二进制安全的字符串，最大512M。
                 常用命令：set、get、decr、incr、mget 等。
@@ -461,9 +462,6 @@ Redis没有直接使用 C 语言的字符串，而是自己创建了名为 SDS (
         刚刚创建的这个skiplist总共包含4层链表，现在假设我们在它里面依然查找23，下图给出了查找路径：
        如图06：https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/skiplist-06.png
 
-
-
-
     2、在介绍redis中是如何实现跳表。
             Redis使用跳跃表作为Zset的实现.
 
@@ -536,6 +534,7 @@ Redis没有直接使用 C 语言的字符串，而是自己创建了名为 SDS (
         4、从内存占用上来说，skiplist比平衡树更灵活一些。一般来说，平衡树每个节点包含2个指针（分别指向左右子树），而skiplist每个节点包含的指针数目平均为1/(1-p)，
             具体取决于参数p的大小。如果像Redis里的实现一样，取p=1/4，那么平均每个节点包含1.33个指针，比平衡树更有优势。
 
+    参考链接：https://segmentfault.com/a/1190000037473381
 6、Redis的内存回收机制
     Redis的内存回收主要分为过期删除策略和内存淘汰策略两部分。
         expires过期字典的键指向数据库的某隔键，而值则记录了数据库键的过期时间，过期时间是一个以毫秒为单位的unix时间戳
@@ -606,6 +605,9 @@ Redis没有直接使用 C 语言的字符串，而是自己创建了名为 SDS (
             }
             ...
         }
+
+
+     参考链接：https://juejin.cn/post/6844903873618903048
 
 7、redis 持久化  RDB&AOF
         1、RDB
