@@ -738,7 +738,6 @@ Redis没有直接使用 C 语言的字符串，而是自己创建了名为 SDS (
             Redis Cluster 是Redis的集群实现，内置数据自动分片机制，集群内部将所有的key映射到16384个Slot中，集群中的每个Redis Instance负责其中的一部分的Slot的读写。
             集群客户端连接集群中任一Redis Instance即可发送命令，当Redis Instance收到自己不负责的Slot的请求时，会将负责请求Key所在Slot的Redis Instance地址返回给客户端，
             客户端收到后自动将原请求重新发往这个地址，对外部透明。一个Key到底属于哪个Slot由crc16(key) % 16384 决定。
-
             在Redis集群的实现中，使用哈希算法（公式是CRC16(Key) mod 16383）将Key映射到0~16383范围的整数。这样每个整数对应存储了若干个Key-Value数据，这样一个整数对应的抽象存储称为一个槽（slot）。每个Redis Cluster的节点——准确讲是master节点——负责一定范围的槽，所有节点组成的集群覆盖了0~16383整个范围的槽。
 
             Redis 集群的数据分片是redis进行分布式存储的一种，它引入了hash槽的概念，每个redis节点存储一定范围的hash槽 ，redis集群有16384个hash槽，每个key通过CRC16校验后对16384取模来决定存储在哪个槽哪个节点
