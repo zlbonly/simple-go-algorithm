@@ -507,11 +507,57 @@ type URL struct {
 
 七、Map实现原理分析
 	1、golang中map是一个kv对集合。底层使用hash table，用链表来解决冲突 ，出现冲突时，不是每一个key都申请一个结构通过链表串起来，而是以bmap为最小粒度挂载，一个bmap可以放8个kv。
+	而是以bmap为最小粒度挂载，一个bmap可以放8个kv。在哈希函数的选择上，会在程序启动时，检测 cpu 是否支持 aes，如果支持，则使用 aes hash，否则使用 memhash。
+	每个map的底层结构是hmap，是有若干个结构为bmap的bucket组成的数组。每个bucket底层都采用链表结构。
 	在这个散列表中，主要出现的结构体有两个，一个叫hmap(a header for a go map)，一个叫bmap(a bucket for a Go map，通常叫其bucket)。这两种结构的样子分别如下所示：
+        // A header for a Go map.
+        type hmap struct {
+            count     int                  // 元素个数
+            flags     uint8
+            B         uint8                // 扩容常量相关字段B是buckets数组的长度的对数 2^B
+            noverflow uint16               // 溢出的bucket个数
+            hash0     uint32               // hash seed
+            buckets    unsafe.Pointer      // buckets 数组指针
+            oldbuckets unsafe.Pointer      // 结构扩容的时候用于赋值的buckets数组
+            nevacuate  uintptr             // 搬迁进度
+            extra *mapextra                // 用于扩容的指针
+        }
 
-	hmap: https://i6448038.github.io/img/go_map/hmap.png
+        type mapextra struct {
+            overflow    *[]*bmap
+            oldoverflow *[]*bmap
+            nextOverflow *bmap
+        }
 
-	bmap: https://i6448038.github.io/img/go_map/bmap.png
+        // A bucket for a Go map.
+        type bmap struct {
+            tophash [bucketCnt]uint8        // len为8的数组
+        }
+        //底层定义的常量
+        const (
+            // Maximum number of key/value pairs a bucket can hold.
+            bucketCntBits = 3
+            bucketCnt     = 1 << bucketCntBits
+        ）
+
+        但这只是表面(src/runtime/hashmap.go)的结构，编译期间会给它加料，动态地创建一个新的结构：
+        type bmap struct {
+          topbits  [8]uint8
+          keys     [8]keytype
+          values   [8]valuetype
+          pad      uintptr
+          overflow uintptr
+        }
+
+
+	hmap结构图：
+	    https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/hmap.png
+
+	bmap结构图
+	https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/bmap.png
+
+	整体结构图：
+	https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/hmap_bmap.jpeg
 
 	简单的说： Golang的map中用于存储的结构是bucket数组。每个bucket就是 bmap .
 	bmap : 由 以下三部分组成。
@@ -519,20 +565,77 @@ type URL struct {
 
 		注意： data区存放的是key-value数据，存放顺序是key/key/key/...value/value/value，如此存放是为了节省字节对齐带来的空间浪费
 
+		每个 bucket 设计成最多只能放 8 个 key-value 对，如果有第 9 个 key-value 落入当前的 bucket，那就需要再构建一个 bucket ，通过 overflow 指针连接起来。
+
 	2、哈希函数会将传入的key值进行hash运算。得到一个唯一的值。go语言把生成的哈希值  “一分为二”
+
+	    例如，现在有一个 key 经过哈希函数计算后，得到的哈希结果是：
+            10010111 | 000011110110110010001111001010100010010110010101010 │ 01010
+
+
 		比如经过一个key 的 hash运算。生成哈希值 88888887777 .go 语言会对hash值拆分。分成 ：  前半部分为高位hash值， 后半部分低位hash值
 
 		高位hash值： 高位用于寻找bucket中的哪个key，便于搜索查找
 
 		低位hash值: 低位用于寻找当前key属于hmap中的哪个bucket
 
-	通俗的说： 地位hash值，用来确定当前key 存在于hmap中的哪个bucket。而地位hash值，用来确定当前key在 在bmap桶 中数组的key，以便获取值。
+	通俗的说： 低位hash值，用来确定当前key 存在于hmap中的哪个bucket。而地位hash值，用来确定当前key在 在bmap桶 中数组的key，以便获取值。
 	3. 哈希冲突
 		当有两个或以上数量的键被哈希到了同一个bucket时，我们称这些键发生了冲突。Go使用链地址法来解决键冲突。
 由于每个bucket可以存放8个键值对，所以同一个bucket存放超过8个键值对时就会再创建一个键值对，用类似链表的方式将bucket连接起来。
-	参考图：https://oscimg.oschina.net/oscnet/1aa15e9f3d78b3e66dacbead2990f78aa08.jpg
+	参考图：https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/bmp_bucket.jpeg
 
-	4、扩容还没有细看
+	4、如何进行扩容
+	    使用哈希表的目的就是要快速查找到目标 key，然而，随着向 map 中添加的 key 越来越多，key 发生碰撞的概率也越来越大。
+	    bucket 中的 8 个 cell 会被逐渐塞满，查找、插入、删除 key 的效率也会越来越低。最理想的情况是一个 bucket
+	    只装一个 key，这样，就能达到 O(1) 的效率，但这样空间消耗太大，用空间换时间的代价太高。
+
+        Go 语言采用一个 bucket 里装载 8 个 key，定位到某个 bucket 后，还需要再定位到具体的 key，这实际上又用了时间换空间。
+        当然，这样做，要有一个度，不然所有的 key 都落在了同一个 bucket 里，直接退化成了链表，各种操作的效率直接降为 O(n)，是不行的。
+        因此，需要有一个指标来衡量前面描述的情况，这就是装载因子。Go 源码里这样定义 装载因子：
+        loadFactor := count / (2^B)
+         count 就是 map 的元素个数，2^B 表示 bucket 数量。
+
+         再来说触发 map 扩容的时机：在向 map 插入新 key 的时候，会进行条件检测，符合下面这 2 个条件，就会触发扩容：
+         1、装载因子超过阈值，源码里定义的阈值是 6.5。
+         2、overflow 的 bucket 数量过多：当 B 小于 15，也就是 bucket 总数 2^B 小于 2^15 时，如果 overflow 的 bucket 数量超过 2^B；当 B >= 15，也就是 bucket 总数 2^B 大于等于 2^15，如果 overflow 的 bucket 数量超过 2^15。
+
+         // 触发扩容时机
+         if !h.growing() && (overLoadFactor(int64(h.count), h.B) || tooManyOverflowBuckets(h.noverflow, h.B)) {
+                 hashGrow(t, h)
+             }
+
+         // 装载因子超过 6.5
+         func overLoadFactor(count int64, B uint8) bool {
+             return count >= bucketCnt && float32(count) >= loadFactor*float32((uint64(1)<<B))
+         }
+
+         // overflow buckets 太多
+         func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
+             if B < 16 {
+                 return noverflow >= uint16(1)<<B
+             }
+             return noverflow >= 1<<15
+         }
+        解释：
+            第 1 点：我们知道，每个 bucket 有 8 个空位，在没有溢出，且所有的桶都装满了的情况下，装载因子算出来的结果是 8。
+            因此当装载因子超过 6.5 时，表明很多 bucket 都快要装满了，查找效率和插入效率都变低了。在这个时候进行扩容是有必要的。
+
+            第 2 点：是对第 1 点的补充。就是说在装载因子比较小的情况下，这时候 map 的查找和插入效率也很低，而第 1 点识别不出来这种情况。
+            表面现象就是计算装载因子的分子比较小，即 map 里元素总数少，但是 bucket 数量多（真实分配的 bucket 数量多，包括大量的 overflow bucket）
+
+            对于命中条件 1，2 的限制，都会发生扩容。但是扩容的策略并不相同，毕竟两种条件应对的场景不同。
+
+            3、对于条件 1，元素太多，而 bucket 数量太少，很简单：将 B 加 1，bucket 最大数量（2^B）直接变成原来 bucket 数量的 2 倍。
+            于是，就有新老 bucket 了。注意，这时候元素都在老 bucket 里，还没迁移到新的 bucket 来。
+            而且，新 bucket 只是最大数量变为原来最大数量（2^B）的 2 倍（2^B * 2）。
+
+            4、对于条件 2，其实元素没那么多，但是 overflow bucket 数特别多，说明很多 bucket 都没装满。
+            解决办法就是开辟一个新 bucket 空间，将老 bucket 中的元素移动到新 bucket，使得同一个 bucket 中的 key 排列地更紧密。
+            这样，原来，在 overflow bucket 中的 key 可以移动到 bucket 中来。结果是节省空间，提高 bucket 利用率，map 的查找和插入效率自然就会提升。
+
+
+
 
 八、slice 及数组 区别和源码
 
