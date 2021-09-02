@@ -14,7 +14,7 @@ https://www.kancloud.cn/aceld/golang/1858955
 			1、在正常状态下，所有等待锁的goroutine按照 FIFO(队列先进先出) 的顺序等待。唤醒的goroutine不会直接拥有锁
 		，而是会和新请求锁的goroutine竞争锁的拥有。新请求锁的goroutine具有优势：它正在CPU上执行。而且可能好几个，所以刚刚唤醒的goroutine有很大可能在锁的竞争中失败。在这种情况下，这个被唤醒的goroutine会加入到等待队列的前面。如果一个等待的goroutine超过1ms没有获取锁，那么它将会把锁转变为饥饿模式。
 			2、在饥饿模式下，锁的所有权将从unlock的goroutine直接交给等待队列中的第一个。新来的goroutine将不会尝试去获得锁。即使锁看起来是unlock状态，也不会尝试自旋操作，而是放在等待队列的尾部。
-			如果一个等待的goroutine获取了锁，并且满足以下任何一个条件。（1）他是等待队列的最后一个。（2）他等待的时间小于1ms，它将会把锁的状态由饥饿模式转换为正常状态。
+			如果一个等待的goroutine获取了锁，并且满足以下任何一个条件。（1）他是等待队列的第一个。（2）他等待的时间小于1ms，它将会把锁的状态由饥饿模式转换为正常状态。
 
 		2、正常状态有很好的性能表现。饥饿模式也是很重要的，他能阻止尾部延迟的现象。
 
@@ -92,6 +92,23 @@ type URL struct {
 二、sync.Map源码分析
 	go中 map 并不是并发安全的，go基于mutex排它锁，实现了并发安全的sync.Map
 
+    在Go 1.6之前， 内置的map类型是部分goroutine安全的，并发的读没有问题，并发的写可能有问题。
+    自go 1.6之后， 并发地读写map会报错，这在一些知名的开源库中都存在这个问题，所以go 1.9之前的解决方案是额外绑定一个锁，
+    封装成一个新的struct或者单独使用锁都可以。
+
+    在1.9以后提出了一个sync.Map 实现并发安全
+    sync.Map 的主要思想就是读写分离，空间换时间。
+
+   1、 看看 sync.map 优点：
+
+        1、空间换时间：通过冗余的两个数据结构(read、dirty)，实现加锁对性能的影响。
+        2、使用只读数据(read)，避免读写冲突。
+        3、动态调整，miss次数多了之后，将dirty数据迁移到read中。
+        4、double-checking。
+        5、延迟删除。 删除一个键值只是打标记，只有在迁移dirty数据的时候才清理删除的数据。
+        6、优先从read读取、更新、删除，因为对read的读取不需要锁。
+
+
 	1、sync.Map的数据结构
 	sync.Map的数据结构很简单，包含 ,mutex，read，dirty，misses 四个字断。
 
@@ -105,6 +122,7 @@ type URL struct {
 
 		misses int // 当从Map中读取到entry的时候，如果read中不包含这个entry，会尝试从dirty中读取，这个时候会将misses加一，只有当misses累积到dirty的长度的时候，就会将dirty提升为read，避免从dirty中miss太多次，因为dirty需要加锁。
 }
+
 
 2、需要介绍下read的数据结构
 
