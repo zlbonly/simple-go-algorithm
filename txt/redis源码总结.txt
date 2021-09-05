@@ -31,6 +31,11 @@
                 常用命令：set、get、decr、incr、mget 等。
 
             String类型的数据结构存储方式 encoding 有三种int、raw、embstr。那么这三种存储方式有什么区别呢？
+
+            所以Redis的string类型一共有三种存储方式，当字符串长度小于等于44，底层采用embstr；当字符串长度大于44，底层采用raw；
+            当设置是整数，底层则采用int。
+            如果字符串小于等于44，实际的数据和RedisObject在内存中地址相邻，如果字符串大于44，实际的数据和RedisObject在内存中地址不相邻。
+
             1、Int
                 Redis中规定假如存储的是「整数型值」，比如set num 123这样的类型，就会使用 int的存储方式进行存储，在redisObject的「ptr属性」中就会保存该值。
                 如图：
@@ -38,6 +43,7 @@
 
             2、SDS
                 假如存储的「字符串是一个字符串值并且长度大于32个字节」就会使用SDS（simple dynamic string）方式进行存储，并且encoding设置为raw；若是「字符串长度小于等于32个字节」就会将encoding改为embstr来保存字符串。
+
                 如图：
                     https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/redis-stirng-sds.jpeg
                     底部实现介绍 SDS.参考 2.1
@@ -204,7 +210,7 @@ Redis没有直接使用 C 语言的字符串，而是自己创建了名为 SDS (
         SDS对象中的buf是一个柔性数组，上层调用时，SDS直接返回了buf。由于buf是直接指向内容的指针，所以兼容C语言函数。而当真正读取内容时，SDS会通过len来限制读取长度，而非“0”，所以保证了二进制安全。
     2、sdshdr5的特殊之处是什么？
         sdshdr5只负责存储小于32字节的字符串。一般情况下，小字符串的存储更普遍，所以Redis进一步压缩了sdshdr5的数据结构，将sdshdr5的类型和长度放入了同一个属性中，用flags的低3位存储类型，高5位存储长度。创建空字符串时，sdshdr5会被sdshdr8替代。
-
+        sdshrd5其实对内存空间的更加节约。
     3、SDS 如何动态扩容 （参考空间预分配）
 
 2 、redis 字典
