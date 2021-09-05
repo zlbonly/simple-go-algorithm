@@ -59,7 +59,8 @@
                     2、ziplist实现 参考 2.3(压缩链表总结)
 
              初始的哈希对象都是采用压缩链表作为底层实现的，只有当哈希对象中key-value对的数量超过OBJ_HASH_MAX_ZIPLIST_ENTRIES时， Redis才会将压缩链表实现的哈希对象转化为由src/dict.h中所描述的dict类型作为底层实现。
-
+                hash-max-ziplist-entries 512，表示当hash项（field，value）数＞512即ziplist项＞1024的时候转为dict
+                hash-max-ziplist-value 64，表示当hash中的value长度超过64的时候转为dict。
 
         3、list：按照添加顺序保持顺序的字符串列表。
                 常用命令：lpush、rpush、lpop、rpop、lrange（获取列表片段）等。
