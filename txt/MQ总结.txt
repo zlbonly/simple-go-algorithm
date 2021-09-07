@@ -313,6 +313,16 @@
 
 
 16、kafka延迟队列，timewheel时间轮。
+   参考链接 https://blog.csdn.net/u013256816/article/details/80697456
+
+17、如何保证消息队列的高可用
+    Kafka 一个最基本的架构认识：由多个 broker 组成，每个 broker 是一个节点；你创建一个 topic，这个 topic 可以划分为多个 partition，每个 partition 可以存在于不同的 broker 上，每个 partition 就放一部分数据
+    Kafka 0.8 以前，是没有 HA 机制的，就是任何一个 broker 宕机了，那个 broker 上的 partition 就废了，没法写也没法读，没有什么高可用性可言
+    Kafka 0.8 以后，提供了 HA 机制，就是 replica（复制品） 副本机制。每个 partition 的数据都会同步到其它机器上，形成自己的多个 replica 副本。
+    所有 replica 会选举一个 leader 出来，那么生产和消费都跟这个 leader 打交道，然后其他 replica 就是 follower
+    。写的时候，leader 会负责把数据同步到所有 follower 上去，读的时候就直接读 leader 上的数据即可。
+
+
 
 
 二、、nsq goland 实现消息队列 （pub/sub模式（发布/订阅，典型的生产者/消费者模式））
