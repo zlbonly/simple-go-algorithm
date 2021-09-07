@@ -15,7 +15,6 @@
 
 	Consumer Group（消费者组）： 每个consumer都属于一个特定的group组，一个group组可以包含多个consumer，但是一个组中只会有一个consumer消费数据。
 
-
         Kafka将消息以topic为单位进行归纳
         将向Kafka topic发布消息的程序成为producers.
         将预订topics并消费消息的程序成为consumer.
@@ -49,7 +48,6 @@
 			通过操作系统的Page Cache，Kafka的读写操作基本上是基于内存的，读写速度得到了极大的提升。
 				3、及时Kafka服务重启，页缓存还是会保持有效，进程内的缓存需要重建。
 
-
 			Page Cache 介绍
 				页缓存是操作系统实现的一个主要的磁盘缓存，以此来减少对磁盘I/O 的操作，具体来说就是 把磁盘中的数据缓存到内存中。具体流程
 				读： 当一个进程准备读区磁盘上的文件内容时，操作系统会先查看待读取的数据所在的页(page) 是否在页缓存中，
@@ -57,7 +55,6 @@
 				写： 如果一个进程需要将数据写入磁盘，那么操作系统也会先检测数据对应的页是否在页缓存中，如果不存在，则会先在页缓存中添加相应的页，最后将数据写入相应的页。被修改的页也就变成了脏页，操作系统会在合适的时间把脏页中的数据写入磁盘，以保持数据的一致性。
 
 				linux 文件cache 分为两层，一个是 page cache ，另外一个是buffer cache ，每一个page cache 包含若干个buffer cache ,通过buffer cache中的指针 指向磁盘block。
-
 
 		1.2.3 零拷贝
 			linux操作系统 “零拷贝” 机制使用了sendfile()方法，允许操作系统将数据从Page Cache 直接 发送到网络，只需要最后一步的copy操作讲数据复制到NIC缓冲区，这样避免了重新复制。
@@ -73,8 +70,6 @@
 				4.操作系统将socket缓冲区中的数据拷贝到NIC缓冲区中，
 
 				参考图： https://mmbiz.qpic.cn/mmbiz_jpg/hUzEz6BmcaovNVeibZibG1FrLHSNGBKXcLBxeYFPGTPskVaIk7DAZHn9H2Rf2elgBTqy6uSxsapvaxT3HnNVv1icQ/640?wx_fmt=jpeg&wxfrom=5&wx_lazy=1&wx_co=1
-
-
 				注意： 零拷贝并非指一次拷贝都没有，而是避免了在内核空间和用户空间之间的拷贝。
 
 				在Kafka中，体现Zero Copy使用场景的地方有两处：基于mmap的索引和日志文件读写所用的TransportLayer（sendfile）。
@@ -122,7 +117,6 @@
     		kafka 使用compact策略 机制删除 位移主题 中的过期消息。
     		具体过程： kafka 通过Log Cleaner 后台线程 定期巡检Compact主题，删除过期的位移消息。
 
-
 4、  kafka 为什么不支持读写分离
             在kafka中，生产者写入消息，消费者读取消息的操作都是与leader副本进行交互的，从而实现的是一种主写主读的生产消费模型。
            kafka不支持主写主读 的原因：
@@ -160,21 +154,15 @@
         		Producer并不直接读写Transaction Log，它与Transaction Coordinator通信，然后由Transaction Coordinator将该事务的状态插入相应的Transaction Log。
         		Transaction Log的设计与Offset Log用于保存Consumer的Offset类似。
 
-
 6、  kafka 如果如何避免消息重复
-
-            3、生产者阶段重复场景
-
+            1、生产者阶段重复场景
             		1、根本原因
             			生产发送的消息没有收到正确的broke响应，导致producer重试。
             			producer发出一条消息，broke落盘以后因为网络等种种原因发送端得到一个发送失败的响应或者网络中断，然后producer收到一个可恢复的Exception重试消息导致消息重复。
-
             		2、生产者发送重复解决方案
             			1、启动kafka的幂等性
             			2、ack=0，不重试。（可能会丢消息，适用于吞吐量指标重要性高于数据丢失，例如：日志收集）
-
-            	 4、消费者数据重复场景及解决方案
-
+            2、消费者数据重复场景及解决方案
             	 	1、根本原因
             	 		数据消费完没有及时提交offset到broker
             	 	2、场景
@@ -310,11 +298,8 @@
     。写的时候，leader 会负责把数据同步到所有 follower 上去，读的时候就直接读 leader 上的数据即可。
 
 二、、nsq goland 实现消息队列 （pub/sub模式（发布/订阅，典型的生产者/消费者模式））
-
     	简介： NSQ是Go语言编写的，开源的分布式消息队列中间件，其设计的目的是用来大规模地处理每天数以十亿计级别的消息。NSQ 具有分布式和去中心化拓扑结构，该结构具有无单点故障、故障容错、高可用性以及能够保证消息的可靠传递的特征，是一个成熟的、已在大规模生成环境下应用的产品。
-
     	1、安装和部署：
-
     	mac :brew instal nsq
     	部署：
     		 1、首先启动nsqlookud
@@ -331,10 +316,7 @@
        		主要负责服务发现，负责nsqd的心跳，状态检测，给客户端，nsqadmin 提供nsqd地址与状态
        	2、nsqd  守护进程
        		负责接收消息，存储队列和将消息发送给客户
-
        	3、 nsqadmin nsqadmin是一个web管理界面
-
-
       核心概念：
 
       	topic: 	topic 是nsq的消息发布逻辑关键词， message 属于某个特定的topic，由生产者在发布消息时生成。
@@ -342,17 +324,9 @@
       	 	生产者和消费者之间的消息通道，相当于消息队列。
 
       	当生产者每次发布消息的时候，消息会采用多播的方式被拷贝到各个channel中，channel起到队列的作用
-
-
       	message:数据流的形式
-
-
       	nsq : 支持延迟消息
-
       		nsq延时消息队列 使用最小堆算法完成 pqueque最小堆优先队列 （根据时间戳，时间戳最小的放在最前面）
-
-
-
 
     总结 1、nsq 和 kafka 区别
 
@@ -366,13 +340,8 @@
     	3、 内存 vs 磁盘
 
     			Nsq 把消息存放在内存，只有当队列里的消息数量超过 --mem-queue-size配置的限制时，才会对消息进行持久化
-
     	4、无序和有序
-
     		Nsq 不支持消息顺序消费，
     		kafka 支持消息顺序消费
-
     	5、Nsq 采用pub/sub 模式，消费者被动接受消息，kafka可以主动选择消费类型
-
-
     	6、nsq 支持延时消息投递， nsq 延时消息的实现，采用的是最小堆算法实现，kafka 是根据时间轮实现。
