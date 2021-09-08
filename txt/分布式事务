@@ -131,19 +131,22 @@
 
         针对redis集群多服务实例场景，可以使用Redlock算法
         可以参考Redisson实现分布式锁，Redis官方提供的分布式锁组件，内部使用了ReadLock算法。
-       go的redsync包实现了redlock算法。（https://github.com/go-redsync/redsync）
+           go的redsync包实现了redlock算法。（https://github.com/go-redsync/redsync）
 
         	ReadLock红锁算法：
         	1、获得当前时间（ms）
 
-			2、首先设置一个锁有效时间valid_time，也就是超过这个时间后锁自动释放，使用相同的key和value对所有redis实例进行设置，每次链接redis实例时设置一个小于valid_time的超时时间，比如valid_time时10s，那超时时间可以设置成50ms，如果这个实例不行，那么换下一个设置
+			2、首先设置一个锁有效时间valid_time,以及获取锁的 花费的时间，（获取锁花费时间 要比valid_time小很多，这是为了不要过长时间等待已经关闭的redis服务。并且试着获取下一个redis实例。）
+			client尝试按照顺序使用相同的key,value获取所有redis服务的锁，
+			比如：TTL为5s,设置获取锁最多用1s，所以如果一秒内无法获取锁，就放弃获取这个锁，从而尝试获取下个锁
 
-			3、计算获取锁总共占用的时间，再加上时钟偏移，如果这个总时间小于valid_time，并且成功设置锁的实例数>= N/2 + 1，那么加锁成功
+			3、计算获取锁总共占用的时间，再加上时钟偏移，如果这个总时间远小于valid_time，并且成功设置锁的实例数>= N/2 + 1，那么加锁成功
 
 			4、如果加锁成功了，那么这个锁的有效时间就是valid_time - 获取锁占用的时间 - 时钟偏移
 
 			5、如果加锁失败，解锁所有实例（每个redis实例都运行del key）
 
+            补充：时钟漂移；指两个电脑间时间流速基本相同的情况下，两个电脑（或两个进程间）时间的差值；如果电脑距离过远会造成时钟漂移值 过大
 
 三、分布式事务
 
