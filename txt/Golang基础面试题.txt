@@ -327,3 +327,90 @@ golang foreach 都是使用副本的方式。所以m[stu.Name]=&stu实际上一�
 	一个应用程序一般对应一个进程，一个进程一般有一个主线程，还有若干个辅助线程，线程之间是平行运行的，在线程里面可以开启协程，让程序在特定的时间内运行。
 
 	协程和线程的区别是：协程避免了无意义的调度，由此可以提高性能，但也因此，程序员必须自己承担调度的责任，同时，协程也失去了标准线程使用多CPU的能力。
+
+
+19、区分闭包函数,defer ，recover ，有名函数，无名函数
+1、  闭包函数，又称匿名函数
+   1、闭包可能会导致变量逃逸到堆上来延长变量的生命周期，给 GC 带来压力。
+   2、  内函数对外函数的变量的修改，是对变量的引用。共享一个在堆上的变量。 变量被引用后，它所在的函数结束，这变量也不会马上被销毁。相当于变相延长了函数的生命周期。
+    看个例子：
+
+        func AntherExFunc(n int) func() {
+            n++
+            return func() {
+                fmt.Println(n)
+            }
+        }
+
+        func ExFunc(n int) func() {
+            return func() {
+                n++
+                fmt.Println(n)
+            }
+        }
+
+        func main() {
+            myAnotherFunc:=AntherExFunc(20)
+            fmt.Println(myAnotherFunc)  //0x48e3d0  在这儿已经定义了n=20 ，然后执行++ 操作，所以是21 。
+            myAnotherFunc()     //21 后面对闭包的调用，没有对n执行加一操作，所以一直是21
+            myAnotherFunc()     //21
+
+            myFunc:=ExFunc(10)
+            fmt.Println(myFunc)  //0x48e340   这儿定义了n 为10
+            myFunc()       //11  后面对闭包的调用，每次都对n进行加1操作。
+            myFunc()       //12
+
+        }
+
+    （3）通过for循环的案例分析闭包对引用环境中变量的调用问题
+        func main() {
+            s := []string{"a", "b", "c"}
+            for _, v := range s {
+                go func() {
+                    fmt.Println(v)
+                }()
+            }
+            time.Sleep(time.Second * 1)
+        }
+
+        这是因为for语句里面中闭包使用的v是外部的v变量，当执行完循环之后，v最终是c,所以输出了 c, c, c。 如果你去执行，有可能也不是这个结果。 输出这个结果的前提是“在主协程执行完for之后，定义的子协程 才开始执行，如果for过程中，子协程执行了，结果就可能不是c， c，c”。 输出的结果依赖于子协程执行时的那一刻，v是什么。
+
+
+       func main() {
+             s := []string{"a", "b", "c"}
+           for _, v := range s {
+               go func() {
+                   fmt.Println(v)
+               }()
+               time.Sleep(time.Second * 3)
+           }
+           fmt.Println("main routine")
+           time.Sleep(time.Second * 1)    // 阻塞模式
+       }
+
+       此时输出的就是 a, b, c , main routine
+
+
+
+3、return xxx这一条语句并不是一条原子指令
+  1、含有defer函数的外层函数，返回的过程是这样的：先给返回值赋值，然后调用defer函数，最后才是返回到更上一级调用函数中
+  2、defer函数的参数值，是在申明defer时确定下来的
+  3、在defer函数申明时，对外部变量的引用是有两种方式：作为函数参数和作为闭包引用
+    作为函数参数，在defer申明时就把值传递给defer，并将值缓存起来，
+    调用defer的时候使用缓存的值进行计算（如上边的例3）
+    而作为闭包引用，在defer函数执行时根据整个上下文确定当前的值
+
+    func c() (i int) {
+        defer func() { i++ }()
+        return 1
+    }
+
+    Panic
+    panic是go的内置函数，它可以终止程序的正常执行流程并发出panic（类似其他语言的exception）。
+    比如当函数F调用panic，f的执行将被终止，然后defer的函数正常执行完后返回给调用者。对调用者而言，F的表现就像调用者直接调用了panic。
+    这个流程会栈的调用次序不断向上抛出panic，直到返回到goroutine栈顶，此时，程序将会崩溃退出。panic可以通过直接调用panic产生。同时也可能由运行时的错误所产生，例如数组越界访问。
+
+    Recover
+    recover是go语言的内置函数，它的主要作用是可以从panic的重新夺回goroutine的控制权。
+    Recover必须通过defer来运行。在正常的执行流程中，调用recover将会返回nil且没有什么其他的影响。但是如果当前的goroutine产生了panic，recover将会捕获到panic抛出的信息，同时恢复其正常的执行流程。
+
