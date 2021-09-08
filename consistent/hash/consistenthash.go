@@ -70,3 +70,21 @@ func (m *Map) Get(key string) string {
 	fmt.Print(idx)
 	return m.hashMap[m.keys[idx%len(m.keys)]]
 }
+
+// Adds 8, 18, 28
+
+/*2.2 数据倾斜问题
+如果服务器的节点过少，容易引起 key 的倾斜。例如上面例子中的 peer2，peer4，peer6 分布在环的上半部分，下半部分是空的。那么映射到环下半部分的 key 都会被分配给 peer2，key 过度向 peer2 倾斜，缓存节点间负载不均。
+
+为了解决这个问题，引入了虚拟节点的概念，一个真实节点对应多个虚拟节点。
+
+假设 1 个真实节点对应 3 个虚拟节点，那么 peer1 对应的虚拟节点是 peer1-1、 peer1-2、 peer1-3（通常以添加编号的方式实现），其余节点也以相同的方式操作。
+
+第一步，计算虚拟节点的 Hash 值，放置在环上。
+第二步，计算 key 的 Hash 值，在环上顺时针寻找到应选取的虚拟节点，例如是 peer2-1，那么就对应真实节点 peer2。
+虚拟节点扩充了节点的数量，解决了节点较少的情况下数据容易倾斜的问题。而且代价非常小，只需要增加一个字典(map)维护真实节点与虚拟节点的映射关系即可。
+*/
+/*func(key []byte) uint32 {
+	i, _ := strconv.Atoi(string(key))
+	return uint32(i)
+}*/
