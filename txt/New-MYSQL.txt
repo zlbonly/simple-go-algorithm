@@ -507,6 +507,17 @@
 	key : 使用的索引
 	rows : 预计需要扫描的行数
 	possiable_key ： 可能用到的索引
+	type: 扫描方式
+	    ‘Tips：常见的扫描方式
+	        system：系统表，少量数据，往往不需要进行磁盘IO
+	        const：常量连接
+	        eq_ref：主键索引(primary key)或者非空唯一索引(unique not null)等值扫描
+	        ref：非主键非唯一索引等值扫描
+	        range：范围扫描
+	        index：索引树扫描 * ALL：
+	        全表扫描(full table scan)
+
+	        type扫描方式由快到慢  system > const > eq_ref > ref > range > index > ALL
 
 	3、慢查询日志
     慢查询日志用来记录在 MySQL 中执行时间超过指定时间的查询语句。通过慢查询日志，可以查找出哪些查询语句的执行效率低，以便进行优化
@@ -576,3 +587,18 @@
             某个分区数据库自生成的ID无法保证全局唯一。因此需要单独设计全局主键，以避免跨库主键重复问题。
 
             例如雪花算法
+
+
+14、update更新语句执行的流程
+    1、与select 流程不同，update会涉及两个日志模块，分别是redo log和 bin log
+    redo log是InnoDB存储引擎的日志，Server层的日志为bin log。redo log是循环写入，bin log是追加写入，不会覆盖之前的日志
+    demo:
+    mysql> UPDATE T SET age = age+1 WHERE id = 1;
+
+    1、执行器先找引擎找id=1这行记录。id为主键，引擎通过索引找到记录；
+    2、执行器拿到行记录，对age+1，调用引擎写接口，更新数据；
+    3、引擎将新记录更新到内存，并将更新记录写入redo log，redo log处于prepare状态，随时可以提交事务；
+    4、执行器生成bin log写入磁盘；
+    5、执行器调用引擎提交事务接口，把redo log成commit状态，更新完成。
+
+    为了让两份日志逻辑一致，上述操作使用了二阶段提交
