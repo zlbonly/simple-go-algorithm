@@ -181,21 +181,19 @@ type URL struct {
 
 	1、waitGroup方法及数据结构概念。
 
-
   	type WaitGroup struct {
 		noCopy noCopy  / 该WaitGroup对象不允许拷贝使用,只能用指针传递
-
 		state1 [12]byte // 用户存储计数器(counter)和waiter的值。只需要64位，其中高32位是counter值，低32位值是waiter值，不直接使用unit64位，是因为uint64的原子操作需要64位操作系统，而32位系统下，可能会出现崩溃。所以使用btye数组来实现。32位系统下4字节对齐，64位系统下8字节对齐，所以申请12个字节。其中必定有8个字节是符合8字节对齐的。在state（）函数中有进行判断。
-
-		sema   uint32  //信号量
 	}
 
-    从结构体中我们看到 state1是一个12位长度的byte数组，用于存储counter和waiter的值 sema就是传说中的信号量。
+        state[0],   state[1],   state[2]
+   64位   waiter,     counter,    sema
+   32位    sema ,      waiter,   counter,
+    从结构体中我们看到 waitgroup结构体中state1的格式很重要。共占12个字节,用于存储counter和waiter的值 sema就是传说中的信号量。
 
-
-	counter： 当前还未执行结束的goroutine计数器
-	waiter : 等待goroutine-group结束的goroutine数量，即有多少个等候者
-	semaphore: 信号量
+        1、waiter 是等待者计数，
+        2、counter 是任务计数，
+        3、sema 是信号量
 
 
 	2、state函数
