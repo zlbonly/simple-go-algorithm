@@ -1,0 +1,458 @@
+
+1、golang 如何实现多态？
+	1、interface
+		Go接口是一组方法的集合，可以理解为抽象的类型，他提供了一种非侵入式的接口。然和类型，只要实现了该接口中的方法集，那么就属于这个类型。
+
+		例如：
+			type Duck interface{
+				Quack()
+				DuckGo()
+			}
+
+			type Chickken struct{
+
+			}
+
+			func(c Chicken) IsChicken() bool{
+				fmt.println("a chicken")
+			}
+
+			func (c Chicken) Quack() {
+    				fmt.Println("嘎嘎")
+			}
+
+			func (c Chicken) DuckGo() {
+   				 fmt.Println("大摇大摆的走")
+			}
+
+			注意，这里只是实现了 Duck 接口方法，并没有将鸡类型和鸭子接口显式绑定。这是一种非侵入式的设计。
+
+			func DoDuck(d Duck) {
+  			 	 d.Quack()
+    			 d.DuckGo()
+			}
+
+			func main() {
+   				 c := Chicken{}
+    			 DoDuck(c)
+			}
+
+			执行正常。如此是不是很类似于其他语言的多态，其实这就是 Go 多态的实现方法。
+
+			核心思想： 我理解为“依赖于接口而不是实现接口，优先使用组合而不是继承”
+
+			其他语言，例如 php ,生命一个接口，每个实现都需要 继承该接口，如果接口改动实现也需要跟着改动，是一种侵入式的。
+
+
+
+	2 空接口和nil 区别
+		1、如果 一个interface 没有定义任何方法，即为空 表示为interface{},如此一来，任何类型都能满它，当参数类型为interface{}时，可以给他传递任意类型的参数。
+			Go的interface{} 常常会被用作为函数的参数传递，用以帮助我们实现其他语言中的范型效果。
+
+	3、golang interface底层源码分析
+		1、interface 底层接口
+			iface 和 eface 都是 Go 中描述接口的底层结构体，区别在于 iface 描述的接口包含方法，而 eface 则是不包含任何方法的空接口：interface{}。
+
+			1、
+			type iface struct {
+    			tab  *itab  // 指针类型，指向 itab 类型
+    			data unsafe.  // 描述了具体的值
+			}
+
+			type itab struct {
+			    inter *interfacetype
+			    _type *_type // // 通用的类型信息
+			    hash  uint32 // copy of _type.hash. Used for type switches.
+			    _     [4]byte
+			    fun   [1]uintptr // variable sized. fun[0]==0 means _type does not implement inter.
+			    	//  // 存储了接口方法对应的具体数据类型的方法地址
+			}
+
+
+			2、	空的 inferface{} 是没有方法集的接口。所以不需要 itab 数据结构。它只需要存类型和类型对应的值即可。对应的数据结构如下：
+
+			type eface struct { // 16 字节
+			    _type *_type
+			    data  unsafe.Pointer
+			}
+
+				从这个数据结构可以看出，只有当 2 个字段都为 nil，空接口才为 nil。空接口的主要目的有 2 个，一是实现“泛型”，二是使用反射。
+
+	4、类型断言
+		一个interface被多种类型实现时，有时候我们需要区分interface的变量究竟存储哪种类型的值，go可以使用comma,ok的形式做区分 value, ok := em.(T)：em 是 interface 类型的变量，T代表要断言的类型，value 是 interface 变量存储的值，ok 是 bool 类型表示是否为该断言的类型 T。总结出来语法如下：
+			<目标类型的值>，<布尔参数> := <表达式>.( 目标类型 ) // 安全类型断言
+			<目标类型的值> := <表达式>.( 目标类型 )　　//非安全类型断言
+
+			 d1,ok := d.(Dog)
+			    if !ok{
+			        return
+			    }
+
+
+1、golang 如何实现多态？
+	1、interface
+		Go接口是一组方法的集合，可以理解为抽象的类型，他提供了一种非侵入式的接口。然和类型，只要实现了该接口中的方法集，那么就属于这个类型。
+
+		例如：
+			type Duck interface{
+				Quack()
+				DuckGo()
+			}
+
+			type Chickken struct{
+
+			}
+
+			func(c Chicken) IsChicken() bool{
+				fmt.println("a chicken")
+			}
+
+			func (c Chicken) Quack() {
+    				fmt.Println("嘎嘎")
+			}
+
+			func (c Chicken) DuckGo() {
+   				 fmt.Println("大摇大摆的走")
+			}
+
+			注意，这里只是实现了 Duck 接口方法，并没有将鸡类型和鸭子接口显式绑定。这是一种非侵入式的设计。
+
+			func DoDuck(d Duck) {
+  			 	 d.Quack()
+    			 d.DuckGo()
+			}
+
+			func main() {
+   				 c := Chicken{}
+    			 DoDuck(c)
+			}
+
+			执行正常。如此是不是很类似于其他语言的多态，其实这就是 Go 多态的实现方法。
+
+			核心思想： 我理解为“依赖于接口而不是实现接口，优先使用组合而不是继承”
+
+			其他语言，例如 php ,生命一个接口，每个实现都需要 继承该接口，如果接口改动实现也需要跟着改动，是一种侵入式的。
+
+
+
+	2 空接口和nil 区别
+		1、如果 一个interface 没有定义任何方法，即为空 表示为interface{},如此一来，任何类型都能满它，当参数类型为interface{}时，可以给他传递任意类型的参数。
+			Go的interface{} 常常会被用作为函数的参数传递，用以帮助我们实现其他语言中的范型效果。
+
+	3、golang interface底层源码分析
+		1、interface 底层接口
+			iface 和 eface 都是 Go 中描述接口的底层结构体，区别在于 iface 描述的接口包含方法，而 eface 则是不包含任何方法的空接口：interface{}。
+
+			1、
+			type iface struct {
+    			tab  *itab  // 指针类型，指向 itab 类型
+    			data unsafe.  // 描述了具体的值
+			}
+
+			type itab struct {
+			    inter *interfacetype
+			    _type *_type // // 通用的类型信息
+			    hash  uint32 // copy of _type.hash. Used for type switches.
+			    _     [4]byte
+			    fun   [1]uintptr // variable sized. fun[0]==0 means _type does not implement inter.
+			    	//  // 存储了接口方法对应的具体数据类型的方法地址
+			}
+
+
+			2、	空的 inferface{} 是没有方法集的接口。所以不需要 itab 数据结构。它只需要存类型和类型对应的值即可。对应的数据结构如下：
+
+			type eface struct { // 16 字节
+			    _type *_type
+			    data  unsafe.Pointer
+			}
+
+				从这个数据结构可以看出，只有当 2 个字段都为 nil，空接口才为 nil。空接口的主要目的有 2 个，一是实现“泛型”，二是使用反射。
+
+	4、类型断言
+		一个interface被多种类型实现时，有时候我们需要区分interface的变量究竟存储哪种类型的值，go可以使用comma,ok的形式做区分 value, ok := em.(T)：em 是 interface 类型的变量，T代表要断言的类型，value 是 interface 变量存储的值，ok 是 bool 类型表示是否为该断言的类型 T。总结出来语法如下：
+			<目标类型的值>，<布尔参数> := <表达式>.( 目标类型 ) // 安全类型断言
+			<目标类型的值> := <表达式>.( 目标类型 )　　//非安全类型断言
+
+			 d1,ok := d.(Dog)
+			    if !ok{
+			        return
+			    }
+
+
+
+2、channel 实现
+	Go并发的哲学，基于channel实现。“不是通过共享内存实现通信，而是通过通信来共享内存”
+
+	runtime/chan.go
+	1、hchan数据结构
+		type hchan struct {
+		    qcount   uint           // 队列中剩余元素
+		    dataqsiz uint           // 队列长度，eg make(chan int64, 5), dataqsiz为5
+		    buf      unsafe.Pointer // 数据存储环形数组
+		    elemsize uint16         // 每个元素的大小
+		    closed   uint32         // 是否关闭 0 未关闭
+		    elemtype *_type         // 元素类型
+		    sendx    uint           // 发送者写入位置
+		    recvx    uint           // 接受者读数据位置
+		    recvq    waitq          // 接收者队列，保存正在读取channel的goroutine
+		    sendq    waitq          // 发送者队列，保存正在发送channel的goroutine
+		    lock     mutex          // 锁
+		}
+
+		waitq 是双向链表，sudog 为 goroutine 的封装
+		type waitq struct {
+		    first *sudog
+		    last  *sudog
+		}
+
+
+
+
+        2、channel发送和接收的流程
+            向channel发送和从channel接收数据主要涉及hchan里的四个成员变量（buf,sendx,recvx,lock），借用Kavya ppt里的图示，来分析发送和接收的过程
+            如图：https://pic1.zhimg.com/v2-c2549285cd3bbfd1fcb9a131d8a6c40c_b.webp
+
+        还是以前面的任务队列为例:
+
+        G1
+        func main(){
+            ...
+
+            for _, task := range hellaTasks {
+                ch <- task    //sender
+            }
+
+            ...
+        }
+
+        //G2
+        func worker(ch chan Task){
+            for {
+               //接受任务
+               task := <- ch  //recevier
+               process(task)
+            }
+        }
+        其中G1是发送者，G2是接收，因为ch是长度为3的带缓冲channel，初始的时候hchan结构体的buf为空，sendx和recvx都为0，当G1向ch里发送数据的时候，会首先对buf加锁，然后将要发送的数据copy到buf里，并增加sendx的值，最后释放buf的锁。然后G2消费的时候首先对buf加锁，然后将buf里的数据copy到task变量对应的内存里，增加recvx，最后释放锁。整个过程，G1和G2没有共享的内存，底层通过hchan结构体的buf，使用copy内存的方式进行通信，最后达到了共享内存的目的.
+
+        3、一般情况下，G2的消费速度应该是慢于G1的，所以buf的数据会越来越多，这个时候G1再向ch里发送数据，这个时候G1就会阻塞，那么阻塞到底是发生了什么呢？
+
+            goroutine是Golang实现的用户空间的轻量级的线程，有runtime调度器调度，与操作系统的thread有多对一的关系
+            其中M是操作系统的线程，G是用户启动的goroutine，P是与调度相关的context，每个M都拥有一个P，P维护了一个能够运行的goutine队列，用于该线程执行。
+
+            1、当G1向buf已经满了的ch发送数据的时候，当runtine检测到对应的hchan的buf已经满了，会通知调度器，调度器会将G1的状态设置为waiting, 移除与线程M的联系，然后从P的runqueue中选择一个goroutine在线程M中执行，此时G1就是阻塞状态，但是不是操作系统的线程阻塞，所以这个时候只用消耗少量的资源。
+
+            2、当G1变为waiting状态后，会创建一个代表自己的sudog的结构，然后放到sendq这个list中，sudog结构中保存了channel相关的变量的指针(如果该Goroutine是sender，那么保存的是待发送数据的变量的地址，如果是receiver则为接收数据的变量的地址，之所以是地址，前面我们提到在传输数据的时候使用的是copy的方式)
+            3、当G2从ch中接收一个数据时，会通知调度器，设置G1的状态为runnable，然后将加入P的runqueue里，等待线程执行
+
+
+
+        4、wait empty channel
+
+            前面我们是假设G1先运行，如果G2先运行会怎么样呢？如果G2先运行，那么G2会从一个empty的channel里取数据，这个时候G2就会阻塞，和前面介绍的G1阻塞一样，G2也会创建一个sudog结构体，保存接收数据的变量的地址，但是该sudog结构体是放到了recvq列表里，当G1向ch发送数据的时候，runtime并没有对hchan结构体题的buf进行加锁，而是直接将G1里的发送到ch的数据copy到了G2 sudog里对应的elem指向的内存地址！
+
+
+            参考如图：https://zhuanlan.zhihu.com/p/27917262
+
+
+
+        5、channel应用场景
+            1、数据交流：当作并发的 buffer 或者 queue，解决生产者 - 消费者问题。多个 goroutine 可以并发当作生产者（Producer）和消费者（Consumer）。
+            2、数据传递：一个goroutine将数据交给另一个goroutine，相当于把数据的拥有权托付出去。
+            3、信号通知：一个goroutine可以将信号(closing，closed，data ready等)传递给另一个或者另一组goroutine。
+            4、任务编排：可以让一组goroutine按照一定的顺序并发或者串行的执行，这就是编排功能。
+            5、锁机制：利用channel实现互斥机制。
+
+
+        6、无缓冲通道和 缓存为1的通道的区别
+            golang channel 有缓冲 与 无缓冲 是有重要区别的 。我之前天真的认为 有缓冲与无缓冲的区别 只是 无缓冲的 是 默认 缓冲 为1 的缓冲式。其实是彻底错误的，无缓冲的与有缓冲channel有着重大差别
+            1、那就是一个是同步的 一个是非同步的
+
+                c1:=make(chan int)        无缓冲
+                c2:=make(chan int,1)      有缓冲
+                c1<-1
+
+            解释：无缓冲的 不仅仅是 向 c1 通道放 1 而是 一直要有别的携程 <-c1 接手了 这个参数，那么c1<-1才会继续下去，要不然就一直阻塞着
+            而 c2<-1 则不会阻塞，因为缓冲大小是1 只有当 放第二个值的时候 第一个还没被人拿走，这时候才会阻塞。
+
+            无缓冲的channel的读写者必须同时完成发送和接收，而不能串行，显然单协程无法满足。所以这里造成了循环等待，会死锁。
+
+3、Context
+	1、背景
+		Go 1.7 标准库引入 context，中文译作“上下文”，准确说它是 goroutine 的上下文，context 主要用来在 goroutine 之间传递上下文信息，包括：取消信号、超时时间、截止时间、k-v 等。
+
+		举个例子：在Go 里，我们不能直接杀死协程，协程的关闭一般会用 channel+select 方式来控制。但是在某些场景下，例如处理一个请求衍生了很多协程，这些协程之间是相互关联的：需要共享一些全局变量、有共同的 deadline 等，而且可以同时被关闭。再用 channel+select 就会比较麻烦，这时就可以通过 context 来实现。
+
+	2、context 底层实现原理
+		1、Context 是一个接口，定义了 4 个方法，它们都是幂等的。也就是说连续多次调用同一个方法，得到的结果都是相同的
+			1、Done() <-chan struct{}	当 context 被取消或者到了 deadline，返回一个被关闭的 只读channel
+				注意：当这个 channel 被关闭时，说明 context 被取消了，读一个关闭的 channel 会读出相应类型的零值。并且源码里没有地方会向这个 channel 里面塞入值。换句话说，这是一个 receive-only 的 channel。因此在子协程里读这个 channel，除非被关闭，否则读不出来任何东西。也正是利用了这一点，子协程从 channel 里读出了值（零值）后，就可以做一些收尾工作，尽快退出。
+			2、    Err() error 在 channel Done 关闭后，返回 context 取消原因
+			3、 Deadline() (deadline time.Time, ok bool)		返回 context 是否会被取消以及自动取消时间（即 deadline）
+			4、Value() 获取之前设置的 key 对应的 value。
+
+
+	3、源码中定义了 Context 接口后，并且给出了一个实现：emptyCtx
+		这实际上是一个空的 context，永远不会被 cancel，没有存储值，也没有 deadline。
+		var (
+		    background = new(emptyCtx)
+		    todo       = new(emptyCtx)
+		)
+
+		func Background() Context {
+    		return background
+		}
+
+		func TODO() Context {
+		    return todo
+		}
+
+		1、context.Background()：这个函数返回一个空context。这只能用于高等级（在 main 或顶级请求处理中）。
+		2、context.TODO()：这个函数也是创建一个空context。也只能用于高等级或当您不确定使用什么 context
+
+
+	4、有了根节点 context，又提供了四个函数创建子节点 context：
+			func WithCancel(parent Context) (ctx Context, cancel CancelFunc)
+			func WithDeadline(parent Context, deadline time.Time) (Context, CancelFunc)
+			func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc)
+			func WithValue(parent Context, key, val interface{}) Context
+
+
+4、golang锁
+
+ 1、互斥锁 Mutex 和 读写锁 RWMutex
+ 	1、互斥锁 Mutex
+ 		1.互斥锁有两种操作，获取锁和释放锁
+		2.当有一个goroutine获取了互斥锁后，任何goroutine都不可以获取互斥锁，只能等待这个goroutine将互斥锁释放
+		3.互斥锁适用于读写操作数量差不多的情况
+		4.读写都可以放入互斥锁中
+
+	Go 标准库中提供了 sync.Mutex 互斥锁类型及其两个方法：
+		Lock 加锁
+		Unlock 释放锁
+
+
+	2、互斥锁的实现原理
+		type Mutex struct {
+			state int32		// 表示当前互斥锁的状态
+			sema uint32	// sema 是用于控制锁状态的信号量。
+		}
+
+		1、Mutex的状态机比较复杂，使用一个int32来表示
+
+
+		32								3								2							1
+		waiterCount						mutexServing					mutexWoken				mutexLocked
+
+		在默认情况下，互斥锁的所有状态位都是 0，int32 中的不同位分别表示了不同的状态：
+		1、mutexLocked — 表示互斥锁的锁定状态；
+		2、mutexWoken — 表示从正常模式被从唤醒；
+		3、mutexStarving — 当前的互斥锁进入饥饿状态；
+		4、waitersCount — 当前互斥锁上等待的 goroutine 个数；
+
+
+		2、为了保证锁的公平性，设计上互斥锁有两种状态：正常状态和饥饿状态
+
+			1、正常状态
+			 正常模式下，所有等待锁的goroutine按照FIFO顺序等待。唤醒的goroutine不会直接拥有锁，而是会和新请求锁的goroutine竞争锁的拥有。新请求锁的goroutine具有优势：它正在CPU上执行，而且可能有好几个，所以刚刚唤醒的goroutine有很大可能在锁竞争中失败。在这种情况下，这个被唤醒的goroutine会加入到等待队列的前面。 如果一个等待的goroutine超过1ms没有获取锁，那么它将会把锁转变为饥饿模式。
+			2、饥饿状态
+				饥饿模式下，锁的所有权将从unlock的gorutine直接交给交给等待队列中的第一个。新来的goroutine将不会尝试去获得锁，即使锁看起来是unlock状态, 也不会去尝试自旋操作，而是放在等待队列的尾部。
+
+			如果一个等待的goroutine获取了锁，并且满足一以下其中的任何一个条件：(1)它是队列中的最后一个；(2)它等待的时候小于1ms。它会将锁的状态转换为正常状态。
+			饥饿模式是在 Go 1.9版本引入的，它防止了队列尾部waiter一直无法获取锁的问题
+
+
+    注意**
+    3、当 Go struct 遇上 Mutex。不能复制原因。
+          我们使用 Mutex 是为了不同 goroutine 之间共享某个变量, 所以需要让这个变量做到能够互斥, 不然该变量就会被互相被覆盖.
+          Mutex 底层是由 state sema 控制的, 当 Mutex 变量被复制时, Mutex 的 state, sema 当时的状态也被复制走了, 但是由于不同 goroutine 之间的 Mutex 已经不是同一个变量了, 这样就会造成要么某个 goroutine 死锁或者不同 goroutine 共享的变量达不到互斥
+
+    4、struct 如何与 不可复制 的类型一块使用 ?
+    type URL struct {
+        Ip       string
+        mux   	 *sync.RWMutex
+    }
+
+    将嵌套的不可复制变量改成指针类型变量，就可避免，但是要注意空指针问题。
+
+ 	2、读写锁RWMutex
+ 		1.读写锁有四种操作 读上锁 读解锁 写上锁 写解锁
+ 		2.写锁最多有一个，读锁可以有多个(最大个数据说和CPU个数有关)
+		3.写锁的优先级高于读锁，这是因为为了防止读锁过多，写锁一直堵塞的情况发生
+ 		4.当有一个goroutine获得写锁时，其他goroutine不可以获得读锁或者写锁，直到这个写锁释放
+ 		由此也可得知，如果当一个goroutine希望获取写锁时，不断地有其他goroutine在获得读锁和释放读锁会导致这个写锁一直处于堵塞状态，所以让写锁的优先级高于读锁可以避免这种情况，
+
+ 		注意：6.读写锁适用于读多写少的情景。
+
+ 		Go 标准库中提供了 sync.RWMutex 互斥锁类型及其四个方法：
+ 			1、Lock 加写锁
+			2、Unlock 释放写锁
+			3、RLock 加读锁
+			4、RUnlock 释放读锁
+
+
+5、Map 源码
+	1、Go语言中，一个map就是一个hash表的引用，它是一个无序的key/value 对的集合，其中所有的key都是不同的，然后通过key
+	可以在常数时间复杂度内检索，更新，删除对应的value .
+	2、Map实现的原理
+		1、Go map 的数据被置入一个由桶组成的数组中，每个桶最多可以存放 8 个 key/value 对。key 的 Hash 值低位用于在该数组中定位到桶，而高 8 位则用于在桶中区分 key/value 对。
+
+		2、核心结构
+			map 主要有两个核心结构，基础结构和桶结构：
+			1、 hmap：map 的基础结构。
+			2、 bmap：存放 key-value 的桶结构。
+				严格来说 hmap.buckets 指向桶组成的数组，每个桶的头部是 bmap，之后是 8 个key，再是 8个 value，最后是 1 个溢出桶指针，指向额外的桶链表，用于存储溢出的元素。
+
+			3、数据结构图
+				1、创建 map 时，会初始化一个 hmap 结构体，同时分配一个足够大的内存空间 A。其中 A 的前段用于 hash 数组，A 的后段预留给溢出的桶
+
+					其中 A 的前段用于 hash 数组，A 的后段预留给溢出的桶。于是 hmap.buckets 指向 hash 数组，即 A 的首地址；hmap.extra.nextOverflow 初始时指向内存 A 中的后段，即 hash 数组结尾的下一个桶，也即第 1 个预留的溢出桶。所以当 hash 冲突需要使用到新的溢出桶时，会优先使用上述预留的溢出桶。hmap.extra.nextOverflow 依次往后偏移直到用完所有的溢出桶，才有可能会申请新的溢出桶空间。
+				2、参考结构图片：
+				https://ask.qcloudimg.com/http-save/yehe-2609282/rafej6fyu0.png?imageView2/2/w/1620
+
+				上图中，当需要分配一个溢出桶时，会优先从预留的溢出桶数组里取一个出来链接到链表后面，这时不需要再次申请内存。但当预留的溢出桶被用完了，则需要申请新的溢出桶
+
+		3. 哈希冲突
+
+		当有两个或以上数量的键被哈希到了同一个bucket时，我们称这些键发生了冲突。Go使用链地址法来解决键冲突。
+		由于每个bucket可以存放8个键值对，所以同一个bucket存放超过8个键值对时就会再创建一个键值对，用类似链表的方式将bucket连接起来。
+		参考图：https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/bmp_bucket.jpeg
+
+		4、扩容
+			1、装载因子
+			  loadFactor := count / (2^B) （count 就是 map 的元素个数，2^B 表示 bucket 数量。）
+
+				装载因子是表示哈希表中元素的填满程度。它的计算公式：装载因子=填入哈希表中的元素个数/哈希表的长度。装载因子越大，填入的元素越多，空间利用率就越高，但发生哈希冲突的几率就变大。反之，装载因子越小，填入的元素越少，冲突发生的几率减小，但空间浪费也会变得更多，而且还会提高扩容操作的次数
+			2、扩容流程
+				1、确定扩容机制
+					1、翻倍扩容
+						触发 load factor 的最大值，负载因子已达到当前界限。这时候说明大部分的桶可能都快满了（即平均每个桶存储的键值对达到6.5个），如果插入新元素，有大概率需要挂在溢出桶（overflow bucket）上。
+
+					2、等量扩容
+						判断溢出桶是否太多。
+						1、当桶总数 < 2 ^ 15 时，如果溢出桶总数 >= 桶总数，则认为溢出桶过多。
+						2、当桶总数 >= 2 ^ 15 时，直接与 2 ^ 15 比较，当溢出桶总数 >= 2 ^ 15 时，即认为溢出桶太多了。
+					因为如果溢出桶的数量过多，也会导致map的查找效率下降。所以触发等量扩容但可以减少溢出桶的使用且使bmap的排列更加紧密。
+				2、第二阶段：初始化、交换新旧 桶/溢出桶
+					新申请的扩容空间（newbuckets/newoverflow）都是预分配，等真正使用的时候才会初始化。不管是增量扩容还是等量扩容，都需要创建新的桶数组，并不是原地操作的。
+				3、扩容
+					扩容完毕后（预分配），不会马上就进行迁移。而是采取增量扩容的方式，当有访问到具体 bukcet 时，才会逐渐的进行迁移（将 oldbucket 迁移到 bucket）
+
+					1、为什么是增量扩容？
+					如果是全量扩容的话，那问题就来了。假设当前 hmap 的容量比较大，直接全量扩容的话，就会导致扩容要花费大量的时间和内存，导致系统卡顿，最直观的表现就是慢。显然，不能这么做
+
+					2、既然迁移是逐步进行的。那如果在途中又要扩容了，怎么办？
+						结合源码上下文可得若正在进行扩容，就会不断地进行迁移。待迁移完毕后才会开始进行下一次的扩容动作
+
+        5、使用建议
+            1、从map设计可以知道，它并不是一个并发安全的数据结构。同时对map进行读写时，程序很容易出错。
+                因此，要想在并发情况下使用map，请加上锁（sync.Mutex或者sync.RwMutex）。其实，Go标准库中已经为我们实现了并发安全的map——sync.Map
+
+            2、遍历map的结果是无序的，在使用中，应该注意到该点
+
+            3、通过map的结构体可以知道，它其实是通过指针指向底层buckets数组。所以和slice一样，尽管go函数都是值传递，
+               但是，当map作为参数被函数调用时，在函数内部对map的操作同样会影响到外部的map
+
+6、Sync.Map
+
+
