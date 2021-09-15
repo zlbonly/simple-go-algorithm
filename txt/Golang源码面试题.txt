@@ -97,7 +97,7 @@ type URL struct {
     封装成一个新的struct或者单独使用锁都可以。
 
     在1.9以后提出了一个sync.Map 实现并发安全
-    sync.Map 的主要思想就是读写分离，空间换时间。
+  sync.Map是协程安全的，并通过读写分离的机制，降低锁的粒度，提高并发性能。
 
    1、 看看 sync.map 优点：
 
@@ -114,7 +114,7 @@ type URL struct {
 
 	type Map struct {
 
-		mu Mutex 	// 当涉及到dirty数据的操作的时候，需要使用这个锁
+		mu Mutex 	// 互斥锁，当涉及到dirty数据的操作的时候，需要使用这个锁
 
 		read atomic.Value // readOnly 。 是一个只读的数据结构，因为只读，并不会有读写冲突，从这个数据中读取总是安全的。
 
@@ -164,8 +164,7 @@ type URL struct {
 		流程：
 		1、如果m.read存在这个键，并且这个entry【没有被标记删除】，尝试直接存储。（因为m.dirty也指向这个entry,所以m.dirty也保持最新的entry）
 		2、如果 m.read不存在这个值， 并且m.dirty中存在，则直接更新m.dirty的值
-		3、如果m.read 存在这个值，并且 【被标记为 未被删除】。将值直接加入到m.dirty。（这个情况下m.dirty原不存在当前值）
-		4、如果m.read和 m.dirty中都不存在，那么是是一个新键值，插入到m.dirty中。（存在一个判断m.dirty是否有新更新数据操作。并且复制m.read数据到m.dirty中）
+		3、如果m.read和 m.dirty中都不存在，那么是是一个新键值，插入到m.dirty中。（存在一个判断m.dirty是否有新更新数据操作。并且复制m.read数据到m.dirty中）
 
 	4.3 delete （删除一个键值。）
 		流程
