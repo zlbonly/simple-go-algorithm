@@ -916,13 +916,25 @@
                 2、是否会有阻塞造成无法退出？如果有，那么这个路径是否会创建大量的goroutine？
 
 
+    另外可以结合 go trace 用来跟踪 goroutines运行情况,跟pprof配合使用，可以起到事半功倍的效果。
 13、反射
     1、golang的反射实现原理
         通过反射机制可以动态获取对象的类型、值、方法甚至动态改变对象的成员。
     2、反射的规则
         1、从接口值到反射对象的反射。
+            1、从relfect.Value中获取接口interface的信息
+
         2、从反射对象到接口值的反射。
+            1、已知类型后转换为其对应的类型的做法如下，直接通过Interface方法然后强制转换
+                realValue := value.Interface().(已知的类型)
+            2、未知原有类型【遍历探测其Filed】
+
         3、为了修改反射对象，其值必须可设置。
+            reflect.Value是通过reflect.ValueOf(X)获得的，只有当X是指针的时候，才可以通过reflec.Value修改实际变量X的值，
+
+    3、Golang reflect慢主要有两个原因
+        1、涉及到内存分配以及后续的GC；
+        2、reflect实现里面有大量的枚举，也就是for循环，比如类型之类的。
 
 14、WaitGroup
     	WaitGroup是多个goroutine之间协作的一种实现方式，主要功能就是阻塞等待一组goroutine执行完成。
