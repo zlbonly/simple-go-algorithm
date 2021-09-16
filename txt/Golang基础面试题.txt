@@ -414,3 +414,29 @@ golang foreach 都是使用副本的方式。所以m[stu.Name]=&stu实际上一�
     recover是go语言的内置函数，它的主要作用是可以从panic的重新夺回goroutine的控制权。
     Recover必须通过defer来运行。在正常的执行流程中，调用recover将会返回nil且没有什么其他的影响。但是如果当前的goroutine产生了panic，recover将会捕获到panic抛出的信息，同时恢复其正常的执行流程。
 
+
+4、make 和 new的区别
+  func new(Type) *Type
+  func make(t Type, size ...IntegerType) Type
+  从定义中可以看出，new返回的是指向Type的指针。 make直接返回的是Type类型值。
+
+
+    1、make也是用于内存分配的，但是和new不同，它只用于chan、map以及切片的内存创建，
+    而且它返回的类型就是这三个类型本身，而不是他们的指针类型，
+    因为这三种类型就是引用类型，所以就没有必要返回他们的指针了。
+
+    2、new 返回一个指向该类型内存地址的指针，同时请注意它同时把分配的内存置为零，也就是类型的零值。
+    func main() {
+     var i *int
+     *i=10
+     fmt.Println(*i)
+    }
+    panic: runtime error: invalid memory address or nil pointer dereference
+ 原因：    对于引用类型的变量，我们不光要声明它，还要为它分配内容空间，
+
+        func main() {
+         var i *int
+         i=new(int)
+         *i=10
+         fmt.Println(*i)
+        }

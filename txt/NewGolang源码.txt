@@ -1,94 +1,3 @@
-
-1、golang 如何实现多态？
-	1、interface
-		Go接口是一组方法的集合，可以理解为抽象的类型，他提供了一种非侵入式的接口。然和类型，只要实现了该接口中的方法集，那么就属于这个类型。
-
-		例如：
-			type Duck interface{
-				Quack()
-				DuckGo()
-			}
-
-			type Chickken struct{
-
-			}
-
-			func(c Chicken) IsChicken() bool{
-				fmt.println("a chicken")
-			}
-
-			func (c Chicken) Quack() {
-    				fmt.Println("嘎嘎")
-			}
-
-			func (c Chicken) DuckGo() {
-   				 fmt.Println("大摇大摆的走")
-			}
-
-			注意，这里只是实现了 Duck 接口方法，并没有将鸡类型和鸭子接口显式绑定。这是一种非侵入式的设计。
-
-			func DoDuck(d Duck) {
-  			 	 d.Quack()
-    			 d.DuckGo()
-			}
-
-			func main() {
-   				 c := Chicken{}
-    			 DoDuck(c)
-			}
-
-			执行正常。如此是不是很类似于其他语言的多态，其实这就是 Go 多态的实现方法。
-
-			核心思想： 我理解为“依赖于接口而不是实现接口，优先使用组合而不是继承”
-
-			其他语言，例如 php ,生命一个接口，每个实现都需要 继承该接口，如果接口改动实现也需要跟着改动，是一种侵入式的。
-
-
-
-	2 空接口和nil 区别
-		1、如果 一个interface 没有定义任何方法，即为空 表示为interface{},如此一来，任何类型都能满它，当参数类型为interface{}时，可以给他传递任意类型的参数。
-			Go的interface{} 常常会被用作为函数的参数传递，用以帮助我们实现其他语言中的范型效果。
-
-	3、golang interface底层源码分析
-		1、interface 底层接口
-			iface 和 eface 都是 Go 中描述接口的底层结构体，区别在于 iface 描述的接口包含方法，而 eface 则是不包含任何方法的空接口：interface{}。
-
-			1、
-			type iface struct {
-    			tab  *itab  // 指针类型，指向 itab 类型
-    			data unsafe.  // 描述了具体的值
-			}
-
-			type itab struct {
-			    inter *interfacetype
-			    _type *_type // // 通用的类型信息
-			    hash  uint32 // copy of _type.hash. Used for type switches.
-			    _     [4]byte
-			    fun   [1]uintptr // variable sized. fun[0]==0 means _type does not implement inter.
-			    	//  // 存储了接口方法对应的具体数据类型的方法地址
-			}
-
-
-			2、	空的 inferface{} 是没有方法集的接口。所以不需要 itab 数据结构。它只需要存类型和类型对应的值即可。对应的数据结构如下：
-
-			type eface struct { // 16 字节
-			    _type *_type
-			    data  unsafe.Pointer
-			}
-
-				从这个数据结构可以看出，只有当 2 个字段都为 nil，空接口才为 nil。空接口的主要目的有 2 个，一是实现“泛型”，二是使用反射。
-
-	4、类型断言
-		一个interface被多种类型实现时，有时候我们需要区分interface的变量究竟存储哪种类型的值，go可以使用comma,ok的形式做区分 value, ok := em.(T)：em 是 interface 类型的变量，T代表要断言的类型，value 是 interface 变量存储的值，ok 是 bool 类型表示是否为该断言的类型 T。总结出来语法如下：
-			<目标类型的值>，<布尔参数> := <表达式>.( 目标类型 ) // 安全类型断言
-			<目标类型的值> := <表达式>.( 目标类型 )　　//非安全类型断言
-
-			 d1,ok := d.(Dog)
-			    if !ok{
-			        return
-			    }
-
-
 1、golang 如何实现多态？
 	1、interface
 		Go接口是一组方法的集合，可以理解为抽象的类型，他提供了一种非侵入式的接口。然和类型，只要实现了该接口中的方法集，那么就属于这个类型。
@@ -276,7 +185,31 @@
             而 c2<-1 则不会阻塞，因为缓冲大小是1 只有当 放第二个值的时候 第一个还没被人拿走，这时候才会阻塞。
 
             无缓冲的channel的读写者必须同时完成发送和接收，而不能串行，显然单协程无法满足。所以这里造成了循环等待，会死锁。
-
+        7、优雅的关闭channel
+          原则：  不要从一个 receiver 侧关闭 channel，也不要在有多个 sender 时，关闭 channel。
+            根据 sender 和 receiver 的个数，分下面几种情况：
+            1、一个 sender，一个 receiver
+            2、 一个 sender， M 个 receiver
+            3、N 个 sender，一个 reciver
+            4、N 个 sender， M 个 receiver
+            对于 1，2，只有一个 sender 的情况就不用说了，直接从 sender 端关闭就好了，没有问题。重点关注第 3，4 种情况。
+            对于 3解决方案就是增加一个传递关闭信号的 channel，receiver 通过信号 channel 下达关闭数据 channel 指令。senders 监听到关闭信号后，停止发送数据
+            对于4 通过一个中间人来关闭channel
+        8、channel导致死锁
+            1、同一个goroutine中，使用同一个 channel 读写。
+                    func main(){
+                        ch:=make(chan int)  //这就是在main程里面发生的死锁情况
+                        ch<-6   //  这里会发生一直阻塞的情况，执行不到下面一句
+                        <-ch
+                    }
+             2、第二种：2个 以上的go程中， 使用同一个 channel 通信。 读写channel 先于 go程创建。
+                func main(){
+                    ch:=make(chan int)
+                    ch<-666    //这里一直阻塞，运行不到下面
+                    go func (){
+                        <-ch  //这里虽然创建了子go程用来读出数据，但是上面会一直阻塞运行不到下面
+                    }()
+                }
 3、Context
 	1、背景
 		Go 1.7 标准库引入 context，中文译作“上下文”，准确说它是 goroutine 的上下文，context 主要用来在 goroutine 之间传递上下文信息，包括：取消信号、超时时间、截止时间、k-v 等。
@@ -395,7 +328,10 @@
 	1、Go语言中，一个map就是一个hash表的引用，它是一个无序的key/value 对的集合，其中所有的key都是不同的，然后通过key
 	可以在常数时间复杂度内检索，更新，删除对应的value .
 	2、Map实现的原理
-		1、Go map 的数据被置入一个由桶组成的数组中，每个桶最多可以存放 8 个 key/value 对。key 的 Hash 值低位用于在该数组中定位到桶，而高 8 位则用于在桶中区分 key/value 对。
+	    1、在 go 中，map 同样也是数组存储的的，每个数组下标处存储的是一个 bucket,
+	        每个 bucket 中可以存储 8 个 kv 键值对，当每个 bucket 存储的 kv 对到达 8 个之后，
+	     会通过 overflow 指针指向一个新的 bucket，从而形成一个链表
+        key 的 Hash 值低位用于在该数组中定位到桶，而高 8 位则用于在桶中区分 key/value 对。
 
 		2、核心结构
 			map 主要有两个核心结构，基础结构和桶结构：
@@ -426,36 +362,52 @@
 			2、扩容流程
 				1、确定扩容机制
 					1、翻倍扩容
-						触发 load factor 的最大值，负载因子已达到当前界限。这时候说明大部分的桶可能都快满了（即平均每个桶存储的键值对达到6.5个），如果插入新元素，有大概率需要挂在溢出桶（overflow bucket）上。
-
+						触发 load factor 的最大值，负载因子已达到当前界限。这时候说明大部分的桶可能都快满了（即平均每个桶存储的键值对达到6.5个），表明很多 bucket 都快要装满了，查找效率和插入效率都变低了。在这个时候进行扩容是有必要的。
+						将 B 加 1，bucket 最大数量（2^B）直接变成原来 bucket 数量的 2 倍。于是，就有新老 bucket 了。注意，这时候元素都在老 bucket 里，还没迁移到新的 bucket 来。而且，新 bucket 只是最大数量变为原来最大数量（2^B）的 2 倍（2^B * 2）。
 					2、等量扩容
 						判断溢出桶是否太多。
 						1、当桶总数 < 2 ^ 15 时，如果溢出桶总数 >= 桶总数，则认为溢出桶过多。
 						2、当桶总数 >= 2 ^ 15 时，直接与 2 ^ 15 比较，当溢出桶总数 >= 2 ^ 15 时，即认为溢出桶太多了。
 					因为如果溢出桶的数量过多，也会导致map的查找效率下降。所以触发等量扩容但可以减少溢出桶的使用且使bmap的排列更加紧密。
+
+
 				2、第二阶段：初始化、交换新旧 桶/溢出桶
 					新申请的扩容空间（newbuckets/newoverflow）都是预分配，等真正使用的时候才会初始化。不管是增量扩容还是等量扩容，都需要创建新的桶数组，并不是原地操作的。
 				3、扩容
 					扩容完毕后（预分配），不会马上就进行迁移。而是采取增量扩容的方式，当有访问到具体 bukcet 时，才会逐渐的进行迁移（将 oldbucket 迁移到 bucket）
+					即每次访问map时都会触发一次搬迁，每次搬迁2个键值对。当oldbuckets中的键值对全部搬迁完毕后，删除oldbuckets。
 
 					1、为什么是增量扩容？
 					如果是全量扩容的话，那问题就来了。假设当前 hmap 的容量比较大，直接全量扩容的话，就会导致扩容要花费大量的时间和内存，导致系统卡顿，最直观的表现就是慢。显然，不能这么做
 
 					2、既然迁移是逐步进行的。那如果在途中又要扩容了，怎么办？
-						结合源码上下文可得若正在进行扩容，就会不断地进行迁移。待迁移完毕后才会开始进行下一次的扩容动作
+						结合源码上下文可得若正在进行扩容，就会不断地进行迁移。待迁移完毕后才会开始进行下一次的扩容动作。
+        5、查找过程
+            1、根据key计算出hash值。
+            2、如果存在old table, 首先在old table中查找，如果找到的bucket已经evacuated，转到步骤3。 反之，返回其对应的value。
+            3、在new table中查找对应的value。
 
-        5、使用建议
+		5、插入过程：
+		    在扩容过程中，oldbucket是被冻结的，查找时会在oldbucket中查找，但不会在oldbucket中插入数据。如果在oldbucket是找到了相应的key，做法是将它迁移到新bucket后加入evalucated标记
+
+        5、map的遍历
+            1、本来 map 的遍历过程比较简单：遍历所有的 bucket 以及它后面挂的 overflow bucket，然后挨个遍历 bucket 中的所有 cell。每个 bucket 中包含 8 个 cell，从有 key 的 cell 中取出 key 和 value，这个过程就完成了。
+            2、遍历如果发生在扩容的过程中，就会涉及到遍历新老 bucket 的过程
+            3、map 遍历的核心在于理解 2 倍扩容时，老 bucket 会分裂到 2 个新 bucket 中去。而遍历操作，会按照新 bucket 的序号顺序进行，碰到老 bucket 未搬迁的情况时，要在老 bucket 中找到将来要搬迁到新 bucket 来的 key。
+
+        6、使用建议
             1、从map设计可以知道，它并不是一个并发安全的数据结构。同时对map进行读写时，程序很容易出错。
                 因此，要想在并发情况下使用map，请加上锁（sync.Mutex或者sync.RwMutex）。其实，Go标准库中已经为我们实现了并发安全的map——sync.Map
 
-            2、遍历map的结果是无序的，在使用中，应该注意到该点
-
+            2、遍历map的结果是无序的，在使用中，应该注意到该点。
+                原因：Go 做得更绝，当我们在遍历 map 时，并不是固定地从 0 号 bucket 开始遍历，每次都是从一个随机值序号的 bucket 开始遍历，并且是从这个 bucket 的一个随机序号的 cell 开始遍历
             3、通过map的结构体可以知道，它其实是通过指针指向底层buckets数组。所以和slice一样，尽管go函数都是值传递，
                但是，当map作为参数被函数调用时，在函数内部对map的操作同样会影响到外部的map
 
             4、1.无论什么情况下len操作总是正常的
               2.同时read不会引发异常，同时read和write会异常，同时write会异常。
               3.read或write的同时，json.Marshall或json.Unmarshall此类解析方法也应避免使用，否则也会引发异常。
+           5、map无序，若实现有序，可以参考map结合链表的方式。
 
 6、Sync.Map
 	sync.Map是协程安全的，并通过读写分离的机制，降低锁的粒度，提高并发性能。
@@ -964,7 +916,147 @@
                 2、是否会有阻塞造成无法退出？如果有，那么这个路径是否会创建大量的goroutine？
 
 
+13、反射
+    1、golang的反射实现原理
+        通过反射机制可以动态获取对象的类型、值、方法甚至动态改变对象的成员。
+    2、反射的规则
+        1、从接口值到反射对象的反射。
+        2、从反射对象到接口值的反射。
+        3、为了修改反射对象，其值必须可设置。
 
+14、WaitGroup
+    	WaitGroup是多个goroutine之间协作的一种实现方式，主要功能就是阻塞等待一组goroutine执行完成。
+    	常用的使用场景：主goroutine调用Add函数设置需要等待的goroutine的数量,当每个goroutine执行完成后调用Done函数(将counter减1)，Wait函数用于阻塞等待直到该组中的所有goroutine都执行完成
+
+    	1、waitGroup方法及数据结构概念。
+
+      	type WaitGroup struct {
+    		noCopy noCopy  / 该WaitGroup对象不允许拷贝使用,只能用指针传递
+    		state1 [12]byte // 用户存储计数器(counter)和waiter的值。只需要64位，其中高32位是counter值，低32位值是waiter值，不直接使用unit64位，是因为uint64的原子操作需要64位操作系统，而32位系统下，可能会出现崩溃。所以使用btye数组来实现。32位系统下4字节对齐，64位系统下8字节对齐，所以申请12个字节。其中必定有8个字节是符合8字节对齐的。在state（）函数中有进行判断。
+    	}
+
+        state[0],   state[1],   state[2]
+       64位   waiter,     counter,    sema
+       32位    sema ,      waiter,   counter,
+        从结构体中我们看到 waitgroup结构体中state1的格式很重要。共占12个字节,用于存储counter和waiter的值 sema就是传说中的信号量。
+
+            1、waiter 是等待者计数，
+            2、counter 是任务计数，
+            3、sema 是信号量
+
+
+    	2、state函数
+    		state是一个内部函数，用于获取counter和 waiter的值
+
+    	//获取counter  、 waiter的值  (counter是uint64的高32位，waiter是uint64的低32位)
+    	func (wg *WaitGroup) state() *uint64 {
+    		// 根据state1的起始地址分析,若是8字节对齐的,则直接用前8个字节作为*uint64类型
+    		// 若不是,说明是4字节对齐,则后移4个字节后,这样必为8字节对齐,然后取后面8个字节作为*uint64类型
+    		if uintptr(unsafe.Pointer(&wg.state1))%8 == 0 {
+    			return (*uint64)(unsafe.Pointer(&wg.state1))
+    		} else {
+    			return (*uint64)(unsafe.Pointer(&wg.state1[4]))
+    		}
+    	}
+
+    	3、Add 函数
+    		用于增加或减少计数器(counter)的，如果计数器为0，则释放调用Wait方法时的阻塞，如果计数器为负，则panic
+    		参考流程图：
+    			https://mmbiz.qpic.cn/mmbiz_png/picLDrXZzlobmEsicxu1Bic6jmxjTu44hiaLlgNGupxmib49p514r4aqtyciaDWibcPOfdEzaY44S6rqYsNln0icVFk75w/640?wx_fmt=png&wxfrom=5&wx_lazy=1&wx_co=1
+
+    			关键判断：
+    			//1.counter > 0,说明还不需要释放信号量，可以直接返回
+    		//2. waiter  = 0 ,说明没有等待的goroutine，也不需要释放信号量，可以直接返回
+    		if v > 0 || w == 0 {
+    			return
+    		}
+
+    	4、done 函数
+    		//将计数器(counter)的值减1
+    		相当于Add(-1)
+
+    	5、wait 函数
+    		调用Wait方法会阻塞当前调用的goroutine直到 counter的值为0。会一直阻塞，一直等待，直到无需等待或信号量触发，才返回
+    		参考流程图：
+    		https://mmbiz.qpic.cn/mmbiz_png/picLDrXZzlobmEsicxu1Bic6jmxjTu44hiaLyuze241iaqn1nGjTcHf360keZkQxwPFXic23dW6SHiaPkvNia0ZYHiaqZtA/640?wx_fmt=png&wxfrom=5&wx_lazy=1&wx_co=1
+
+    	6、注意点
+    	1.Add()必须在Wait()前调用
+
+    	2.Add()设置的值必须与实际等待的goroutine个数一致，如果设置的值大于实际的goroutine数量，可能会一直阻塞。如果小于会触发panic
+
+    	3. WaitGroup不可拷贝，可以通过指针传递，否则很容易造成BUG
+
+
+
+15、内存对齐
+	不是所有的硬件平台都能访问任意地址上的任意数据的；某些硬件平台只能在某些地址处取某些特定类型的数据，否则抛出硬件异常。
+	1、为什么要内存对齐
+		简单来说，操作系统的cpu不是一个字节一个字节访问内存的，是按2,4,8这样的字长来访问的。
+		如32位系统访问粒度是4字节（bytes），64位系统的是8字节。当被访问的数据长度为 n 字节且该数据地址为n字节对齐，那么操作系统就可以一次定位到数据，这样会更加高效。无需多次读取、处理对齐运算等额外操作。
+		demo：
+			1、这么设计的目的，是减少 CPU 访问内存的次数，加大 CPU 访问内存的吞吐量。比如同样读取 8 个字节的数据，一次读取 4 个字节那么只需要读取 2 次。
+			2、内存对齐对实现变量的原子性操作也是有好处的，每次内存访问是原子的，如果变量的大小不超过字长，那么内存对齐后，对该变量的访问就是原子的，
+				demo: 变量 a、b 各占据 3 字节的空间，内存对齐后，a、b 占据 4 字节空间，CPU 读取 b 变量的值只需要进行一次内存访问。如果不进行内存对齐，CPU 读取 b 变量的值需要进行 2 次内存访问。第一次访问得到 b 变量的第 1 个字节，第二次访问得到 b 变量的后两个字节。
+		简言之：合理的内存对齐可以提高内存读写的性能，并且便于实现变量操作的原子性。方便不同平台 移植平台原因(移植原因)
+		不是所有的硬件平台都能访问任意地址上的任意数据的；某些硬件平台只能在某些地址处取某些特定类型的数据，否则抛出硬件异常。
+
+	2、go语言通过unsafe.Alignof 描述对齐规则
+		1、对任意类型的变量X，unsafe.AlignOf（x）至少为1
+		2、对于struct结构体类型变量X，计算每一个字段f 的 unsafe.Alignof(x),unsafe.AlignOf(x)等于其中最大值
+		3、对于array数组类型的变量x，unsafe.Align(x) 等于构成数组的元素类型的对齐倍数。
+
+	3、struct内存对齐的技巧
+		1、合理布局可以减少内存占用
+			假设一个 struct 包含三个字段，a int8、b int16、c int64
+			顺序会对 struct 的大小产生影响顺序会对 struct 的大小产生影响
+			type demo1 struct {
+				a int8
+				b int16
+				c int32
+			}
+
+			type demo2 struct {
+				a int8
+				c int32
+				b int16
+			}
+			每个字段按照自身的对齐倍数来确定在内存中的偏移量，字段排列顺序不同，上一个字段因偏移而浪费的大小也不同。
+
+			1、接下来逐个分析，首先是 demo1：
+			1、a 是第一个字段，默认是已经对齐的，从第 0 个位置开始占据 1 字节。
+			2、b 是第二个字段，对齐倍数为 2，因此，必须空出 1 个字节，偏移量才是 2 的倍数，从第 2 个位置开始占据 2 字节。
+			3、c 是第三个字段，对齐倍数为 4，此时，内存已经是对齐的，从第 4 个位置开始占据 4 字节即可。
+			因此 demo1 的内存占用为 8 字节
+
+			其实是 demo2：
+
+		    1、是第一个字段，默认是已经对齐的，从第 0 个位置开始占据 1 字节。
+			2、c 是第二个字段，对齐倍数为 4，因此，必须空出 3 个字节，偏移量才是 4 的倍数，从第 4 个位置开始占据 4 字节。
+			3、b 是第三个字段，对齐倍数为 2，从第 8 个位置开始占据 2 字节。
+			demo2 的对齐倍数由 c 的对齐倍数决定，也是 4，因此，demo2 的内存占用为 12 字节。
+
+			因此，在对内存特别敏感的结构体的设计上，我们可以通过调整字段的顺序，减少内存的占用。
+
+	4、 空 struct{} 的对齐
+			空 struct{} 大小为 0，作为其他 struct 的字段时，一般不需要内存对齐。但是有一种情况除外：即当 struct{} 作为结构体最后一个字段时，需要内存对齐。因为如果有指针指向该字段, 返回的地址将在结构体之外，如果此指针一直存活不释放对应的内存，就会有内存泄露的问题（该内存不因结构体释放而释放）。
+
+			type demo3 struct {
+				c int32
+				a struct{}
+			}
+
+			type demo4 struct {
+				a struct{}
+				c int32
+			}
+
+			func main() {
+				fmt.Println(unsafe.Sizeof(demo3{})) // 8
+				fmt.Println(unsafe.Sizeof(demo4{})) // 4
+			}
+
+			可以看到，demo4{} 的大小为 4 字节，与字段 c 占据空间一致，而 demo3{} 的大小为 8 字节，即额外填充了 4 字节的空间。
 
 
 

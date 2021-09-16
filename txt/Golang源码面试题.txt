@@ -185,7 +185,7 @@ type URL struct {
 		state1 [12]byte // 用户存储计数器(counter)和waiter的值。只需要64位，其中高32位是counter值，低32位值是waiter值，不直接使用unit64位，是因为uint64的原子操作需要64位操作系统，而32位系统下，可能会出现崩溃。所以使用btye数组来实现。32位系统下4字节对齐，64位系统下8字节对齐，所以申请12个字节。其中必定有8个字节是符合8字节对齐的。在state（）函数中有进行判断。
 	}
 
-        state[0],   state[1],   state[2]
+    state[0],   state[1],   state[2]
    64位   waiter,     counter,    sema
    32位    sema ,      waiter,   counter,
     从结构体中我们看到 waitgroup结构体中state1的格式很重要。共占12个字节,用于存储counter和waiter的值 sema就是传说中的信号量。
