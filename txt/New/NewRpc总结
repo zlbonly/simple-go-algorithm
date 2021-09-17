@@ -66,6 +66,12 @@
 
             缺点：
             可读性差：因为最终是转成二进制流，不像xml和json能够直接查看明文。
+        4、proto3和proto2的区别
+            1、在第一行非空白非注释行，必须写：syntax = "proto3";
+            2、枚举类型的第一个字段必须为 0。
+            3、移除了 default 选项
+            4、字段规则移除了 “required”，并把 “optional” 改名为 “singular”；
+
 
 4、HTTP1.0 、HTTP1.1 和 HTTP2.0区别
   1、HTTP不足
@@ -118,7 +124,7 @@
 
 5、之前我自己简单实现过一个rpc的框架：（主要参考网上的博客）
     1、定义服务端和客户端消息的编码，序列化协议。
-        1、采用encoding/gob 和 application/json
+        1、采用encoding/gob 和 application/json （Gob 是Go语言自己以二进制形式序列化和反序列化程序数据的格式，可以在 encoding 包中找到。这种格式的数据简称为 Gob（即 Go binary 的缩写）
     2、定义服务端和客户端 网络传输的协议及框架。
         1、http协议，及httpClient （以后可以考虑采用netty网络通信框架）
     3、客户端。
