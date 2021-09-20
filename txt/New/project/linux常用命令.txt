@@ -82,3 +82,38 @@
 
 			说明：1、 对行进行排序，先排序是因为去重与统计的 ‘unip’命令只能处理相邻行
 				 2、按重复次数排序 （sort 的 -n：依照数值的大小排序；-r 按照相反顺序排列）
+
+5、netstat
+    1、列出所有端口 (包括监听和未监听的)
+        netstat -a     #列出所有端口
+        netstat -at    #列出所有tcp端口
+        netstat -au    #列出所有udp端口
+
+    三、netstat常见参数
+    -a (all) 显示所有选项，默认不显示LISTEN相关。
+    -t (tcp) 仅显示tcp相关选项。
+    -u (udp) 仅显示udp相关选项。
+    -n 拒绝显示别名，能显示数字的全部转化成数字。
+    -l 仅列出有在 Listen (监听) 的服务状态。
+
+    -p 显示建立相关链接的程序名
+    -r 显示路由信息，路由表
+    -e 显示扩展信息，例如uid等
+    -s 按各个协议进行统计
+    -c 每隔一个固定时间，执行该netstat命令。
+
+    16、直接统计tcp数量监听的数量
+        #netstat -ant | wc -l
+
+
+    1、应用在高并发运行情况下出现大量TimeWait连接请求
+    # 统计命令：
+      # 统计已连接上的，状态为“established
+      netstat -na|grep ESTABLISHED|wc -l
+      # 查看80端口连接数
+      netstat -ant|grep -i "80"|wc -l
+      # 如果需要统计tcp连接每种状态的连接的数量
+      netstat -an | awk '/^tcp/ {++S[$NF]} END {for(a in S) print a, S[a]}'
+
+
+
