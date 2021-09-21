@@ -175,41 +175,36 @@ func merge(left, right []int) []int {
 		② 交换数据：将a[1]和a[n]交换，使a[n]是a[1...n]中的最大值；然后将a[1...n-1]重新调整为最大堆。 接着，将a[1]和a[n-1]交换，使a[n-1]是a[1...n-1]中的最大值；然后将a[1...n-2]重新调整为最大值。 依次类推，直到整个数列都是有序的。
 
 
+func initHead(nums []int,parent,len int){
+	temp := nums[parent]
+	child := 2*parent+1
 
-func HeapSort(arr []int){
-    length := len(arr)-1
-    if length ==0 {
-        return
-    }
-    // 构建大顶堆
-    for i := length/2;i >=0; i-- {
-        AdjustHeap(arr,i,length-1)
-    }
+	for child < len {
+		if child+1 < len && nums[child] < nums[child+1] {
+			child++
+		}
 
-    //  0和最后一个数组交换后，对0-n-1 继续构建大顶堆
-    for j:= length-1;j>=0;j--{
-        swap(arr,0,j)
-        AdjustHeap(arr,0,j-1)
-    }
+		if child < len && nums[child] <= temp {
+			break
+		}
+
+		nums[parent] = nums[child]
+
+		parent = child
+		child = child*2+1
+	}
+
+	nums[parent] = temp
 }
 
-func AdjustHeap(arr []int,start int ,end int){
-    temp := arr[start]
-    for i := 2*start + 1; i <= end; i *= 2 {
-        // 左右孩子的节点 2i+1. 2i+2 选择出左右孩子较大的下标
-        if i < end && arr[i] < arr[i+1] {
-            i++
-        }
+func HeadSort(nums []int){
+	for i := len(nums)/2-1; i>=0; i-- {
+		initHead(nums,i,len(nums))
+	}
 
-        if temp <= arr[i] {
-            break //已为大顶堆 保持稳定性
-        }
-        arr[start] = arr[i] //将子节点上移
-        start = i       //下一轮帅选
-    }
-    arr[start] = temp //插入正确的位置
-}
+	for i := len(nums)-1;i >0; i--{
+		nums[0],nums[i] = nums[i],nums[0]
 
-func swap(arr []int,i int ,j int){
-    arr[i],arr[j] = arr[j],arr[i]
+		initHead(nums,0,i)
+	}
 }
