@@ -1,0 +1,73 @@
+1、分布一致性
+在分布式系统中，可能出现各种意外（断电、网络拥塞、CPU/内存耗尽等等），使得服务器宕机或无法访问，最终导致无法和其他服务器保持状态一致。为了应对这种情况，就需要有一种一致性协议来进行容错，使得分布式系统中即使有部分服务器宕机或无法访问，整体依然可以对外提供服务。
+
+Raft 分布一致性算法
+	Raft 可以解决分布式 CAP 理论中的 CP，即 一致性（C：Consistency） 和 分区容忍性（P：Partition Tolerance），并不能解决 可用性（A：Availability） 的问题。
+	Raft 将一致性问题分解成了三个子问题：选举 Leader、日志复制、安全性。
+
+	1、核心概念
+
+		1、服务器角色
+			在 Raft 中，任何时刻，每个服务器都处于这三个角色之一 ：
+			1、Leader - 领导者，通常一个系统中是一主（Leader）多从（Follower）。Leader 负责处理所有的客户端请求。
+				在一个 Term 内，Leader 始终保持不变，直到下线了。Leader 需要周期性向所有 Follower 发送心跳消息，以阻止 Follower 转变为 Candidate。
+			2、Follower - 跟随者，不会发送任何请求，只是简单的 响应来自 Leader 或者 Candidate 的请求。
+				在一定时限内，如果 Follower 接收不到消息，就会转变成 Candidate，并发起选举。
+			3、Candidate - 参选者，选举新 Leader 时的临时角色。
+				Candidate 向 Follower 发起投票请求，如果获得集群中半数以上的选票，就会转变为 Leader。
+
+		2、任期
+			Raft 把时间分割成任意长度的 任期（Term），任期用连续的整数标记。每一段任期从一次选举开始。Raft 保证了在一个给定的任期内，最多只有一个领导者。
+			任期在 Raft 算法中充当逻辑时钟的作用，使得服务器节点可以查明一些过期的信息（比如过期的 Leader）。每个服务器节点都会存储一个当前任期号，这一编号在整个时期内单调的增长。当服务器之间通信的时候会交换当前任期号。
+
+			例1:如果一个服务器的当前任期号比其他人小，那么他会更新自己的编号到较大的编号值。
+			例1:如果一个 Candidate 或者 Leader 发现自己的任期号过期了，那么他会立即恢复成跟随者状态。
+			例1:如果一个节点接收到一个包含过期的任期号的请求，那么他会直接拒绝这个请求
+		3、RPC
+			Raft 算法中服务器节点之间的通信使用 远程过程调用（RPC）。基本的一致性算法只需要两种 RPC：
+			1、RequestVote RPC - 请求投票 RPC，由 Candidate 在选举期间发起。
+			2、AppendEntries RPC - 附加条目 RPC，由 Leader 发起，用来复制日志和提供一种心跳机制
+	2、选举leader
+		Raft 使用一种心跳机制来触发 Leader 选举。Leader 需要周期性的向所有 Follower 发送心跳消息，以此维持自己的权威并阻止新 Leader 的产生。
+
+		每个 Follower 都设置了一个随机的竞选超时时间，一般为 150ms ~ 300ms，如果在竞选超时时间内没有收到 Leader 的心跳消息，就会认为当前 Term 没有可用的 Leader，并发起选举来选出新的 Leader。开始一次选举过程，Follower 先要增加自己的当前 Term 号，并转换为 Candidate。
+
+		Candidate 会并行的向集群中的所有服务器节点发送投票请求（RequestVote RPC），它会保持当前状态直到以下三件事情之一发生：
+			1、自己成为 Leader
+				当一个 Candidate 从整个集群半数以上的服务器节点获得了针对同一个 Term 的选票，那么它就赢得了这次选举并成为 Leader。每个服务器最多会对一个 Term 投出一张选票，按照先来先服务（FIFO）的原则。要求半数以上选票的规则确保了最多只会有一个 Candidate 赢得此次选举。
+				一旦 Candidate 赢得选举，就立即成为 Leader。然后它会向其他的服务器发送心跳消息来建立自己的权威并且阻止新的领导人的产生。
+			2、其他的服务器成为 Leader
+				1、等待投票期间，Candidate 可能会从其他的服务器接收到声明它是 Leader  的 AppendEntries RPC
+				2、如果这个 Leader 的 Term 号（包含在此次的 RPC 中）不小于 Candidate 当前的 Term，那么 Candidate 会承认 Leader 合法并回到 Follower 状态。
+				3、如果此次 RPC 中的 Term 号比自己小，那么 Candidate 就会拒绝这个消息并继续保持 Candidate 状态。
+			3、没有任何服务器成为 Leader
+				1、如果有多个 Follower 同时成为 Candidate，那么选票可能会被瓜分以至于没有 Candidate 可以赢得半数以上的投票。当这种情况发生的时候，每一个 Candidate 都会竞选超时，然后通过增加当前 Term 号来开始一轮新的选举。然而，没有其他机制的话，选票可能会被无限的重复瓜分。
+
+				2、Raft 算法使用随机选举超时时间的方法来确保很少会发生选票瓜分的情况，就算发生也能很快的解决。为了阻止选票起初就被瓜分，竞选超时时间是一个随机的时间，在一个固定的区间（例如 150-300 毫秒）随机选择，这样可以把选举都分散开。
+
+	3、日志复制
+		1、日志复制流程
+            1、Leader 负责处理所有客户端的请求。
+            2、Leader 把请求作为日志条目加入到它的日志中，然后并行的向其他服务器发送 AppendEntries RPC 请求，要求 Follower 复制日志条目。
+            3、Follower 复制成功后，返回确认消息。当这个日志条目被半数以上的服务器复制后，Leader 提交这个日志条目到它的复制状态机，并向客户端返回执行结果。
+		注意：如果 Follower 崩溃或者运行缓慢，再或者网络丢包，Leader 会不断的重复尝试发送 AppendEntries RPC 请求 （尽管已经回复了客户端），直到所有的跟随者都最终复制了所有的日志条目。
+
+		2、Leader 和 Follower 日志一致的保证
+			Leader 通过强制 Followers 复制它的日志来处理日志的不一致，Followers 上的不一致的日志会被 Leader 的日志覆盖。
+			Leader 为了使 Followers 的日志同自己的一致，Leader 需要找到 Followers 同它的日志一致的地方，然后覆盖 Followers 在该位置之后的条目
+			Leader 会从后往前试，每次日志条目失败后尝试前一个日志条目，直到成功找到每个 Follower 的日志一致位点，然后向后逐条覆盖 Followers 在该位置之后的条目
+
+	4、raft脑裂问题
+		raft算法保证任一任期内最多一个leader被选出。在一个复制集中任何时刻只能有一个leader。系统中同时有多余一个leader，被称之为脑裂（brain split），这是非常严重的问题，会导致数据的覆盖丢失。
+		在raft中，两点保证了这个属性：
+			1、一个节点某一任期内最多只能投一票
+			2、只有获得majority投票的节点才会成为leader
+
+		因此，某一任期内一定只有一个leader。
+	但是，在网络分割（network partition）的情况下，可能会出现两个leader，但两个leader所处的任期是不同的。
+	例如：Node A、B和Node C、D、E可能由于网络问题出现了分割，因此Node C、D、E无法收到来自leader（Node B）的消息。
+		在election time之后，Node C、D、E会分期选举，由于满足majority条件，Node E成为了term 2的leader。
+
+		因此，在系统中貌似出现了两个leader：term 1的Node B， term 2的Node E。Node B的term更旧，但由于无法与Majority节点通信，NodeB仍然会认为自己是leader。
+		此时，有客户端往Node B发送了写请求，NodeB发现自己无法将log entry 复制到majority大多数的节点，因此不会告诉客户端写入成功。如果客户端往C发送了写请求，Node C是能将log entry 复制到majority大多数的节点，所以Node C所在的网络分区能正常接收请求。
+		当网络被修复后，Node B和Node A发现自己所在的Term为1，比Node C的term小，因此会退化为follower并同步集群数据。
