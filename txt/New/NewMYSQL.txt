@@ -737,3 +737,29 @@
 7、执行引擎调用存储引擎API去更新数据。
 8、存储引擎更新数据，同时写入undo_log、redo_log信息。
 执行引擎写binlog，提交事务，流程结束。
+
+1、limit 为什么会影响性能。
+
+	1、MySQL的分页查询通常通过limit来实现。对于小的偏移量，直接使用limit来查询没有问题，
+	但是随着数据量的增大，越往后分页，limit的数据的偏移量就越大，速度也会越来越明显
+
+	 问题sql ：
+	 		select * from product limit 40000,20.
+
+	2、优化
+		1、优化的思想 避免数据量大的时候，扫描过多的数据记录。
+
+			1、利用 id >= 的形式
+				select * from product where id >= (select id from product limit 4090000,1) limit 20
+			2、利用join
+
+				select * from product a join (select id from product limit 400000,20) b on a.id = b.id
+
+
+
+		可以优化的原因：
+			1、通过索引字段进行定位，然后才取出来相应的内容，减少了回表查询的次数。提升查询优化的效率。
+
+			在实际的项目中，可以利用策略模式的方式去处理分页：
+			例如，每页100条数据，判断如果是100页以内，就使用基本的分页方式，如果大于100，则使用子查询的分页方式。
+
