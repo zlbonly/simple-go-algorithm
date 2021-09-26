@@ -178,4 +178,52 @@
 
     ios充值碰到的问题 重复下发鹅肝,解决方案： 解决数据库的唯一索引防止重复补单。
 
+五、基于redis实现延迟消息队列
 
+1、基于有赞实现的延迟队列
+	1、job是需要异步处理的任务。延迟队列的基本单元，与具体的topic关联再一起。
+	2、topic 一组相同类型job的集合（队列），供消费者订阅。
+
+2、job属性
+	1、Topic job类型。可以理解成具体业务的名称。
+	2、id job的唯一标示。由业务方保证。
+	3、Delay 延迟的时间，单位秒，（服务方会根据这个时间戳，转换成具体的执行时间点）
+	4、TTR ：job 执行超时时间。
+	5、Body ： job的内容，以json格式存储。
+3、每个job的状态
+	1、delay 不可执行状态，扽带时钟周期。
+	2、ready :可执行轧状态，等待消费
+	3、reserved  已被消费者读取
+	4、delete： 已被消费者完成或者已被删除
+
+4、消息存储
+	1、Job 存放任务的具体内容
+	2、Delay Bucket 一个有序列表
+		bucket的数据结构就是redis的zset，将其分为多个bucket是为了提高扫描速度，降低消息延迟。
+		1、根据配置启用 3个bucket也就是3个 zset提高扫码的速度，并且生成对应3个计时器
+		2、业务方设置延迟任务的时候，先把任务 通过redis.set缓存，然后在随机加入一个zset中。
+		3、通过计时器轮询遍历每个zset，将任务时间小于/等于当前时间的 加入到 ready queue 中
+
+
+	3、Ready Queue 	普通的list 队列
+
+	大体实现思想是：
+		1、每一个topic 对应一个ready Queue 队列。 业务方轮询获取延迟任务时，直接根据topic获取即可。
+
+
+5、	需要注意的是
+	1、业务方调用push 添加延迟队列
+	2、服务方 通过pop接口轮询获取延迟任务，服务端会一直阻塞，直到队列中有延迟任务 或者 设置的ttr超时后返回。
+		任务执行完成后需调用finish接口删除任务, 否则任务会重复投递, 消费端需能处理同一任务的多次投递
+
+
+
+举例说明一个Job的生命周期
+	1、用户对某个商品下单，系统创建订单成功，同时往延迟队列里put一个job。job结构为：{‘topic':'orderclose’, ‘id':'ordercloseorderNoXXX’, ‘delay’:1800 ,’TTR':60 , ‘body':’XXXXXXX’}
+	2、延迟队列收到该job后，先往job pool中存入job信息，然后根据delay计算出绝对执行时间，并以轮询(round-robbin)的方式将job id放入某个bucket。
+	3、timer每时每刻都在轮询各个bucket，当1800秒（30分钟）过后，检查到上面的job的执行时间到了，取得job id从job pool中获取元信息。如果这时该job处于deleted状态，则pass，继续做轮询；如果job处于非deleted状态，首先再次确认元信息中delay是否大于等于当前时间，如果满足则根据topic将job id放入对应的ready queue，然后从bucket中移除；如果不满足则重新计算delay时间，再次放入bucket，并将之前的job id从bucket中移除。
+	4、消费端轮询对应的topic的ready queue（这里仍然要判断该job的合理性），获取job后做自己的业务逻辑。与此同时，服务端将已经被消费端获取的job按照其设定的TTR，重新计算执行时间，并将其放入bucket。
+	5、消费端处理完业务后向服务端响应finish，服务端根据job id删除对应的元信息。
+
+
+缺点是：如果业务方没有调用finish和delete 以及，ttr时间超时了。那么 业务方的任务仍然存在在服务方的 redis中。缺少一定的清理机制。可以考虑在给 任务设置一定的超时时间，或者脚本定期清理。
