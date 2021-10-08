@@ -76,26 +76,32 @@ func InsertSort(arr []int) {
 	然后递归
 	时间复杂度 nlog（n）,空间复杂度log(n),不稳定排序
 */
-func quickSort(arr []int, left int, right int) []int {
-	if left < right {
-		key := arr[(left+right)/2]
-		i, j := left, right
-		for {
-			if arr[i] < key {
-				i++
-			}
-			if arr[j] > key {
-				j--
-			}
-			if i >= j {
-				break
-			}
-			arr[i], arr[j] = arr[j], arr[i]
-		}
-		quickSort(arr, left, i-1)
-		quickSort(arr, j+1, right)
+func quickSort(arr []int, left, right int) {
+	if left >= right {
+		return
 	}
-	return arr
+	i, j := left, right
+	pivot := arr[(i+j)/2] // 这里的经验值取的是中间数，经过 Benchmark 测试，确实比较优秀
+	for i <= j {
+		// 从左边开始迭代
+		// 左边的数如果比 pivot 小，那么就应该将他放在左边，继续向右滑动，遇到一个比他大的为止
+		for arr[i] < pivot {
+			i++
+		}
+		// 右边的数如果比 pivot 大，那么就应该将他放在右边，继续向左滑动，遇到一个比他小的为止
+		for arr[j] > pivot {
+			j--
+		}
+		// 这里进行一次交换，将上面碰到的大数和小数交换一次
+		//left 继续右走，right 继续左走 注意这里还不一定相遇，去继续执行上面的逻辑
+		if i <= j {
+			arr[i], arr[j] = arr[j], arr[i]
+			i++
+			j--
+		}
+	}
+	quickSort(arr, left, j)
+	quickSort(arr, i, right)
 }
 
 /*
