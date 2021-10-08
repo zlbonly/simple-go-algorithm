@@ -1,0 +1,374 @@
+项目
+1、用户服务
+
+2、房间服务
+
+3、充值服务
+
+4、社区服务
+
+5、主播动态服务
+
+6、连麦服务
+
+7、榜单服务
+
+8、勋章服务
+
+
+
+
+
+
+4、社区服务
+    社区一期的功能：
+    	1、前台 用户发布帖子（图，图文，视频），
+    	2、用户发布评论 + 回复 + 引用回复
+    	3、用户对帖子和评论，点赞+举报
+    	4、管理员对所有用户发的帖子 点赞（每次操作+5次），封禁&禁言用户，删除用户帖子，
+    	5、后台帖子/评论发布列表&帖子/评论审核列表，帖子和评论发布方式，管理员列表等，禁言列表，处理举报列表
+    		几乎包涵市面上社区类需求 常见的逻辑。
+
+    社区二期新增功能：
+
+    1、用户关注用户（主页关注数，粉丝数，关注列表，粉丝列表 点赞数）
+    2、用户关注 社区圈子主题
+    3、今日热门 通过后台可以配置 4条今日热门，默认展示在 帖子列表的前四条
+    4、名人堂和用户积分
+    	1、每个圈子下面都有 名人堂，名人堂内展展示积分前50名的用户
+    		发帖数：用户在此圈子的发帖总数，展示真实数字
+    		回帖数：用户在此圈子的回帖总数，展示真实数字
+    		积分：用户在此圈子的获得的积分，展示真实数字
+    		（发帖、回帖包括历史的数据，积分不包括历史数据）
+
+    			CREATE TABLE `user_zone_count` (
+    	  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+    	  `user_id` bigint(20) unsigned NOT NULL DEFAULT '0' COMMENT '用户id',
+    	  `zone_id` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '圈子id',
+    	  `post_count` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '发帖数',
+    	  `reply_count` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '回贴数',
+    	  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    	  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+      PRIMARY KEY (`id`),
+      KEY `idx_user_id` (`user_id`),
+      KEY `idx_zone_id` (`zone_id`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=102 DEFAULT CHARSET=utf8 COMMENT='圈子用户数据表';
+
+
+    	2、积分逻辑：
+
+    	每发帖1篇，在本圈子名人堂内增加10积分
+    	每回帖1次，在本圈子名人堂内增加1积分（包括评论、回复）
+    	若帖子、评论被删除，增加的积分扣除
+    	帖子被移到其他圈子后，积分随之移动到对应圈子
+
+    	先审后发：  审核后加积分
+    	先发后审 ：  发出去后就加积分
+
+     	因此在发布帖子和评论的时：需要在事务內， 处理 发帖 + 增加用户积分 + 增加用户所属圈子的发帖量或者评论量
+     	删除评论和帖子的时候，也需要在事务內 处理扣减积分和发帖量 相关的操作。
+
+
+    用户关注 社区圈子主题
+    	CREATE TABLE `user_zone_follow` (
+      `id` bigint(20) NOT NULL AUTO_INCREMENT,
+      `user_id` bigint(20) NOT NULL COMMENT '关注人ID',
+      `zone_id` bigint(20) NOT NULL COMMENT '圈子ID',
+      `update_time` bigint(20) NOT NULL DEFAULT '0' COMMENT '更新时间',
+      `create_time` bigint(20) DEFAULT NULL,
+      `is_del` tinyint(1) NOT NULL COMMENT '是否删除',
+      PRIMARY KEY (`id`),
+      KEY `idx_fan_id` (`zone_id`),
+      KEY `idx_user_id` (`user_id`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COMMENT='关注圈子';
+
+    逻辑较简单，不赘述
+
+    方案一、直接使用现有表统计
+    需要展示该用户的 点赞数（包括对用户的帖子的赞，对用户评论的赞，回复的赞），关注数量，粉丝数量
+     post 表中
+     每条数据都有 like_count 并且有user_id 可以 直接根据select sum(like_count) from post  where user_id =  0;
+
+     同理评论表也有 select sum(like_count) from post where anchor_uid = 0;
+
+     两条统计相加 就是 点赞总数
+
+     2、对于 关注数量
+     	select count(*) from fans_id = 1000000;
+
+     3、对于粉丝数量
+     	select count(*) from user_id = 1000000;
+
+
+
+    2、方案二
+    新增user2表，
+    CREATE TABLE `user2` (
+      `id` bigint(20) NOT NULL AUTO_INCREMENT,
+      `user_id` bigint(20) NOT NULL COMMENT '被关注人ID',
+      `like_count` int(20) NOT NULL COMMENT '点赞数',
+      `follow_count` int(20) NOT NULL DEFAULT '0' COMMENT '关注数',
+      `fans_count` int(20) NOT NULL DEFAULT '0' COMMENT '粉丝数',
+      `create_time` bigint(20) DEFAULT '0',
+      `update_time` bigint(20) NOT NULL DEFAULT '0',
+      PRIMARY KEY (`id`),
+      KEY `idx_user_id` (`user_id`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=45 DEFAULT CHARSET=utf8mb4 COMMENT='关注';
+
+
+    但是 在用户关注、点赞，取消关注的时候，需要 使用事务，在事务中更新这三个字段的值
+
+    1、点赞，需要从 user_like表中统计（但是，user_like 以前需要区分管理员点赞（管理员点赞 每次操作+5）和非管理点赞每次 操作+1）
+
+    	因此统计时需要：
+    	SELECT COUNT(1) as num1, SUM(`admin_user`*4) as num2 FROM user_like WHERE `author_id` = ? and create_time<?
+
+    2、比如 用户1 給用户2 点赞
+    	那么需要更新 用户1 的关注数 和 用户2 的粉丝数
+
+    	update user2 where user_id = 1  set follow_count = follow_count+1
+    	update user2 hwere user_id =2 set fans_count = fans_coutn +1
+
+
+    最后采用的是方案二的设计理由：
+    	1、对于单个user_id 直接 从user2中查询 被点赞数量，关注数，粉丝数，根据 user_id索引，可以实现毫秒级的查询
+    		缺点是： 在点赞时，关注/取消关注时 需要 使用事务 更新和创建 记录，流程麻烦些。
+    	2、如果采用方案一，对于每个用户都需要根据 user_id 去post表和user_like表中进行count ，目前用户数据较少性能区分不明想，
+    	但是如果运行一年以后，单个用户发帖上万，在使用count时，性能就差了，本地生成了上百万条数据 进行对比了。
+
+    1、总结 社区的难点在于
+    	1、整体的技术架构不复杂，主要难点在于 社区一期和二期表结构的设计，以满足需求。
+    	2、目前请求基本都是打在db上，没有采用缓存优化，
+    	3、目前基于微服务架构采用了垂直分库的策略，社区所有的表放在同一数据库下，和别的社区库耦合。
+    	但是目前评论表，没有采用水平分表的策略，还处在线上观擦数据的阶段。
+
+    社区目前存在的优化点：
+    	1、对于关注/粉丝 点赞数等目前没有维护缓存，数据量太少了还不到十万 数据库完全就可以扛住了。
+    	2、未来如果数据量达到百万级别，会考虑对关注关系维护缓存。
+    	3、对于用户关注列表。未来优化的考虑是，采用策略模式，缓存用户最新关注的100条数据，对于100条以后的数据，直接查询db
+    		考虑是 用户不可能 一直往后 翻太多页，（很好发生）
+
+
+5、主播动态服务
+
+    建立主播动态中心主播发送开播通知/上传视频等行为，由系统自动生成动态并发布主播可手动发布图文动态（朋友圈）主播动态生成后，
+    会通过应用内推送的形式，将主播动态推送给当前处于应用内非消费场景的关注用户用户可在"主播动态"模块看到自己关注的主播发布的动态，
+    并针对动态评论&点赞用户的评论收到点赞&回复时，通过消息中心通知用户发布动态&发布评论时，需调用网易易盾
+
+    推送功能实现方案：
+        场景：主播发布动态后，会给关注他的用户推送动态消息。用户处于应用内，且处于一级页面时，指定主播动态从顶部弹出推送
+
+       1、方案-、
+        1、使用HTTP 轮询接口实现，客户端打开app并且登录状态下调用轮询接口，获取时间间隔和轮询开关
+        2、如果开关开启，则根据轮询的时间间隔，定期轮询获取推送的数据。
+        3、服务器定期获取最新的数据返回。
+
+
+        缺点：1、如果在总决赛期间，QPS可能达到上万
+             2、解决方案。1、设置轮询开关 关闭，临时降级
+
+
+
+        2、方案二
+            1、借用弹幕服务进行主动推送，避免接口qps过高
+
+            缺点：
+                1、目前弹幕服务推送是基于直播间的
+
+                2、浪费弹幕服务器带宽。
+
+6、
+   连麦pk 和普通pk
+
+           1、普通连麦	平台主播可以邀请其他主播连麦pk,连麦方式为双人同屏视频，语音互通
+
+           2、Pk连麦 。基于普通连麦，在一定的连麦时间内，对比连麦双方分值决出胜负，失败方在惩罚阶段接受约定好的惩罚
+
+               1、PK阶段：双方主播进入PK状态后，要经历两个阶段，第一个阶段是比分阶段，双方通过收礼或其它行为获得分值，如果在比分阶段通过比分分出胜负，将进入下一阶段：惩罚阶段，若未分出胜负将直接结束比赛；惩罚阶段，分值不再变化，失败方要在惩罚阶段完成约定的惩罚方式
+               2、PK时长：两个阶段都拥有固定的时长，暂定比分阶段时长为6分钟，惩罚阶段时长为2分钟；两个时长在PK开始前，从服务端获取（根据线上效果或场景变化，会适当调整时长）
+               3、PK分数：比分阶段，每赠送主播0.1鹅肝礼物，记为1分；
+
+           3、
+               1、后台维护主播白名单，白名单內的主播可以进行连麦
+               2、连麦发起方 发起连麦邀请，接收方可以 【接受】，【拒绝】，【不处理】（也就是邀请过期）（15s邀请时间）
+
+                   一条连麦数据拥有以下几个状态
+               未开始;1进行中;2惩罚阶段;3已结束;4后台关闭， 5空闲；// 3，4，5都是可以进行pk的状态
+
+               连麦时间结束后，：双方如果分数值相同，则平局 连麦结束
+                             分数不一样，	进入惩罚阶段。然后连麦结束
+
+
+               3、严格的维护连麦过程中的状态机，pk的状态和分数值 通过socket下发给连麦双方
+                   分数值，通过携程消费kafka中的送礼数据，计算出真实的分数，分别下发给 不同的用户。
+
+               项目比较复杂，难度不大，
+
+               难点：
+                   1、周星榜频道开关配置和 连麦主播的信息，都是存在本地
+                   go-cache中，会导致数据不一致的情况
+
+                   2、倒计时（邀请倒计时，惩罚倒计时）
+
+                   解决思路：
+                       1、使用redis发布订阅的模式，当修改发生时 通知副本及时更新信息
+
+                       go-cache是一款类似于memached 的key/value 缓存软件。它比较适用于单机执行的应用程序。
+                       go-cache实质上就是拥有过期时间并且线程安全的map，可以被多个goroutine安全访问。
+                       2、使用  qcron 来实现，注册倒计时事件（内部使用 大顶推实现，并使用定时器轮询）
+
+ 7、周星榜服务
+     1、周星榜
+     	属于平台榜单玩法的一种。具体规则是：
+     	1、CMS 后台 可以分频道 配置周星礼物，最多四个周星礼物，除首次外配置修改后下周生效。
+     	2、前台包括 本周实时榜单 和 上周榜单
+     		1、本周实时榜单，统计各个频道下，每个周星礼物的送礼排行，
+     		2、上周榜单。周日晚上24:00 结算各个频道下，各个礼物的排行榜，并统计最强助力用户
+     	需求：难度 3型，复杂度 4星
+     	需求需要注意的地方：
+
+     		1、配置比较麻烦
+     			1、榜单开关；可针对频道分别配置，移动端&Web端可分别控制开启&关闭；用户控制端上是否展示周星榜常驻入口&移动端未选中礼物时展示的周星横幅
+     				单端关闭(WeborAPP)；服务正常，只是关闭端不展示入口，数据正常统计
+     				全端关闭（Web&APP）；服务关闭，不展示入口的同时，数据不再统计/礼物标签不再展示，如本周结算时，服务处于关闭状态，则下周不会发放榜单奖励
+     				榜单开关实时生效
+     			2、如果一条配置 有礼物新增 则需要在下周配置生效，
+     			3、如果新增一条配置 本周需要立即生效。并且还要展示本周和下周的礼物配置。
+     				因此 每个频道 每个礼物 都会根据是否同步配置到底层 维护两条数据，本周的和下周的 ，当有开关关闭的时候，及时通知底层rpc服务更新配置。
+
+     		2、某个周星礼物 相同分数时，需要根据时间排序，最先达到分值的排在最前面 (难点)
+
+     			实现，使用redis zset 在进行有序排列时，需要维护一个时间戳 浮点数 的变量。比如（Max - now timestamp）/10000000 	，时间戳越大浮点数越小。 从而进行区别相同分值的情况。
+
+     		3、需要根据频道id和礼物giftId 维护各个频道下，各个礼物的排行榜
+
+     		4、各个礼物上周的排行榜 缓存维护，需要考虑跨年
+     			rpc服务 和 PHP client 端都有 考虑 根据 年份，当前年份所属的周（第几周 ） 作为参数
+
+     				上周榜单缓存key:WeekStarRankingPrefix      = "Rank:WeekStar:Ranking:%d:%d"     //Rank:WeekStar:Realtime:$week:$channel,周星榜
+     				实时榜单缓存key:WeekStarRealtimePrefix     = "Rank:WeekStar:Realtime:%d:%d:%d" //Rank:WeekStar:Realtime:$week:$channel:$gift
+
+     				并且把 上周的数据保存到mogodb中
+
+     		5、统计上周榜单频道下某个礼物的 最佳助力（送礼最多的用户）时 ，需要从clickhouse中查询，clickhouse作为列式数据库，比较陌生，在实现时，花费了一定的时间。
+     			因为送礼数据都存在了clickhouse中，为了方便用户热度计算时的查询。 （难点）
+
+     			思路：
+     			1、先从clickhouse 中 根据start,end,roomId(主播房间ID)，giftId ,统计出 满足条件的送礼数量 并且只取 前两个
+     			2、判断 判断这两个 送礼的总数量是否相同，如果第一个比第二个大 直接返回 第一个就行。
+     			3、如果两个相同，在分别查询这两个用户 最后一次送礼的时间，如果 第一个比第二个大，则返回第二个用户，否则返回第一个。
+
+     		5、实时榜单：
+     			 go底层 使用协程 实时消费kafka中的送礼数据，根据频道id,礼物id，礼物数量，时间 维护一个有序列表
+
+
+
+ 8、勋章服务
+    2、 勋章服务
+    	1、获取勋章信息
+    	2、获取用户所有的勋章信息
+    	3、更新勋章信息缓存
+    	4、获取分组信息
+    	5、获取分组信息
+    	6、更新勋章分组缓存
+    	7、获取用户勋章信息
+    	8、佩戴勋章
+    	9、取消佩戴勋章
+    	10、授予勋章
+    	11、取消授予勋章
+
+
+    	1、什么是勋章（奖牌？
+    	  1、奖牌是指在企鹅体育完成特定任务后，获得的专属奖励标示。奖牌可佩戴，佩戴后，发弹幕时将显示在用户名下
+    	2、如何佩戴勋章
+    		每个奖牌均有指定的解锁条件，完成指标后，将解锁奖牌，点击奖牌可进行佩戴，每个类别的奖牌仅限佩戴一个
+    	3、奖牌有时间期限吗？
+    		每个奖牌均有各自的有效期限，过期后，奖牌由 “已解锁”变成 “未解锁”，需要重新完成解锁条件，获取奖牌。
+
+    	如果用户拥有多个勋章 在 弹幕会展示多个图片。
+
+    	1、勋章分组 设置
+    		分组类型： 全站活动和限时活动
+    		用户召回
+    		贵族
+    		端午节活动类似
+    	2、	勋章设置
+    		具体的勋章配置，包括勋章的web/app 端等解锁/未解锁图片，解锁要求，所属 的勋章分类等
+
+    	3、effect_info_user
+    	   user_id =》 eid 对应的一个表，用来记录 用户拥有的勋章以及佩戴的状态。
+
+    勋章配置：
+    CREATE TABLE `effect_info` (
+      `id` int(10) unsigned NOT NULL AUTO_INCREMENT COMMENT '特效id',
+      `name` varchar(64) NOT NULL DEFAULT '' COMMENT '特效名称',
+      `description` varchar(255) NOT NULL DEFAULT '' COMMENT '特效说明',
+      `type` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '特效类型，1:勋章，2：欢迎特效',
+      `reward_type` tinyint(3) DEFAULT '0' COMMENT '勋章类型0默认1活动勋章',
+      `weight` int(11) DEFAULT '0' COMMENT '权重',
+      `upload_param` text COMMENT '图片上传素材json格式',
+      `web_img_url` varchar(255) NOT NULL DEFAULT '' COMMENT 'web端图片地址',
+      `app_img_url` varchar(255) NOT NULL DEFAULT '' COMMENT '移动端图片地址',
+      `show_range` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '特效房间显示：0不显示；1单房间显示；2全房间显示',
+      `show_time` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '特效显示的秒数',
+      `show_start` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '展示开始时间',
+      `show_end` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '展示结束时间',
+      `go_url` varchar(255) NOT NULL DEFAULT '' COMMENT '跳转链接',
+      `hover` text COMMENT '连接hover',
+      `room_broadcast` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '是否在本房间广播：0不广播，1广播',
+      `broadcast_count` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '发送广播的房间数',
+      `broadcast_limit` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '发送广播的房间限制',
+      `opname` varchar(24) NOT NULL DEFAULT '',
+      `update_time` int(10) unsigned NOT NULL DEFAULT '0',
+      `create_time` int(10) unsigned NOT NULL DEFAULT '0',
+      `status` tinyint(4) NOT NULL DEFAULT '0',
+      `level_type` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '等级类型 0-无类型',
+      `level` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '特效等级 1 < 2 < 3 ...',
+      `show_count_type` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '显示数量类型 1-显示单个，2-显示多个',
+      `show_time_type` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '显示时间类型 1-覆盖，2-累加',
+      `show_status` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '持有状态 0-show_time时间内有效，1-永久有效',
+      `column` varchar(255) DEFAULT '' COMMENT '用户勾选的栏目分类id',
+      `cate_id` text COMMENT '2级分类id',
+      `cate_id_list` text NOT NULL COMMENT '房间分类id列表',
+      `color_list` varchar(64) NOT NULL DEFAULT '' COMMENT '彩色弹幕颜色列表',
+      `flag` tinyint(4) NOT NULL DEFAULT '0' COMMENT '特效标志 0-不关心，1-门票附属特效',
+      `group_id` int(11) NOT NULL DEFAULT '0' COMMENT '分组id',
+      `web_img_unlock_url` varchar(255) NOT NULL DEFAULT '' COMMENT 'web端未解锁图片地址',
+      `app_img_unlock_url` varchar(255) NOT NULL DEFAULT '' COMMENT 'web端未解锁图片地址',
+      `unlock_condition` varchar(100) NOT NULL DEFAULT '' COMMENT '解锁条件',
+      `unlock_url` varchar(255) NOT NULL DEFAULT '' COMMENT '解锁url',
+      `strategy_url` varchar(255) NOT NULL DEFAULT '' COMMENT '攻略url',
+      `share_info` varchar(100) NOT NULL DEFAULT '' COMMENT '分享文案',
+      `is_show` tinyint(3) unsigned NOT NULL DEFAULT '0' COMMENT '是否显示 0显示，1不显示',
+      `web_img_open_url` varchar(255) NOT NULL DEFAULT '' COMMENT 'web端已解锁图片地址',
+      `app_img_open_url` varchar(255) NOT NULL DEFAULT '' COMMENT 'web端已解锁图片地址',
+      PRIMARY KEY (`id`),
+      KEY `status_index` (`status`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=1619158535 DEFAULT CHARSET=utf8;
+
+    CREATE TABLE `effect_info_user` (
+      `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+      `user_id` int(11) NOT NULL DEFAULT '0' COMMENT '用户ID',
+      `eid` int(10) NOT NULL DEFAULT '0' COMMENT '特效ID',
+      `update_time` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '结束时间',
+      `status` tinyint(1) unsigned NOT NULL DEFAULT '0' COMMENT '0:未解绑 1:已解绑',
+      `update_auth` varchar(50) NOT NULL DEFAULT '' COMMENT '操作人',
+      `reason` varchar(100) NOT NULL DEFAULT '' COMMENT '原因',
+      `create_time` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '操作时间',
+      `wear_status` tinyint(3) unsigned NOT NULL DEFAULT '2' COMMENT '佩戴状态 1：未佩戴 2：已佩戴',
+      PRIMARY KEY (`id`),
+      KEY `user_id` (`user_id`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=699738 DEFAULT CHARSET=utf8;
+
+
+    CREATE TABLE `effect_group` (
+      `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+      `name` varchar(30) NOT NULL DEFAULT '' COMMENT '分组名称',
+      `type` tinyint(3) NOT NULL DEFAULT '0' COMMENT '分组类型 1：全站 2：限时',
+      `is_delete` tinyint(1) unsigned NOT NULL DEFAULT '0' COMMENT '0:未删除 1:已删除',
+      `update_auth` varchar(100) NOT NULL DEFAULT '' COMMENT '操作人',
+      `create_time` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '添加时间',
+      `update_time` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '更新时间',
+      PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=23 DEFAULT CHARSET=utf8 COMMENT='奖牌分组表';
+
