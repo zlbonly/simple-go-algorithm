@@ -116,7 +116,6 @@
 
 
 
-
         2、channel发送和接收的流程
             向channel发送和从channel接收数据主要涉及hchan里的四个成员变量（buf,sendx,recvx,lock），借用Kavya ppt里的图示，来分析发送和接收的过程
             如图：https://pic1.zhimg.com/v2-c2549285cd3bbfd1fcb9a131d8a6c40c_b.webp
@@ -651,6 +650,11 @@
                      如图：https://github.com/zlbonly/simple-go-algorithm/blob/master/pics/混合屏障03.png
 
                   对象 5 删除与对象 6 的引用关系，触发写屏障，将对象 6 标记为灰色
+        GC触发条件
+        自动垃圾回收的触发条件有两个：
+
+        超过内存大小阈值
+        达到定时时间
 
 
 9、进程、线程、协程的区别
