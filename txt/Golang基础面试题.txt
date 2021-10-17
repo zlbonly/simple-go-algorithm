@@ -440,3 +440,92 @@ golang foreach 都是使用副本的方式。所以m[stu.Name]=&stu实际上一�
          *i=10
          fmt.Println(*i)
         }
+
+
+
+ 1、golang 使用组合的方式实现继承
+
+ golang并非完全面向对象的程序语言，为了实现面向对象的继承这一神奇的功能，golang允许struct间使用匿名引入的方式实现对象属性方法的组合
+
+ 组合使用注意项
+ 使用匿名引入的方式来组合其他struct
+ 默认优先调用外层方法
+ 可以指定匿名struct以调用内层方法
+
+ type People struct{}
+
+ type People2 struct{}
+
+ func (p *People) ShowA() {
+     fmt.Println("showA")
+     p.ShowB()
+ }
+ func (p *People) ShowB() {
+     fmt.Println("showB")
+ }
+
+ func (p *People) ShowC() {
+     fmt.Println("showC")
+ }
+
+ func (p *People) ShowD() {
+     fmt.Println("People:showD")
+ }
+
+ func (p *People2) ShowD() {
+     fmt.Println("People2:showD")
+ }
+
+ type Teacher struct {
+     People  //组合People
+     People2 //组合People2
+ }
+
+ func (t *Teacher) ShowB() {
+     fmt.Println("teacher showB")
+ }
+ func (t *Teacher) ShowC(arg string) {
+     fmt.Println(arg)
+ }
+
+ func main() {
+     t := Teacher{}
+
+     //print showA
+     //print showB
+     t.ShowA()
+
+     //print teacher showB
+     t.ShowB()
+
+     //print showB
+     t.People.ShowB()
+
+     //print test
+     t.ShowC("test")
+
+     //print showC
+     t.People.ShowC()
+
+     //因为组合方法中多次包含ShowD，所以调用时必须显示指定匿名方法
+     //print People2:showD
+     t.People2.ShowD()
+ }
+
+
+2、golang nil slice 和 empty slic 的区别 空切片
+
+	1、var slice []int 创建出来的 slice 其实是一个 nil slice。它的长度和容量都为0。和nil比较的结果为true。这里比较混淆的是empty slice，empty slice的长度和容量也都为0，但是所有的空切片的数据指针都指向同一个地址 0xc42003bda0。空切片和 nil 比较的结果为false。
+
+
+	2、空切片的定义：
+	var slice = []int{}
+	var slice = make([]int,0)
+
+	empty slice 是指slice不为nil，但是slice没有值，slice的底层的空间是空的，此时的定义如下：
+	当我们查询或者处理一个空的列表的时候，这非常有用，它会告诉我们返回的是一个列表，但是列表内没有任何值。
+
+
+	3、var slice []int
+	slice[1] = 0
+	此时slice的值是nil，这种情况可以用于函数需要返回slice，当函数出现异常的时候，保证函数依然会有返回值nil
