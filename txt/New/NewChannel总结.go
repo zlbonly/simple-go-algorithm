@@ -309,3 +309,32 @@ func operatorTimeout() {
 		fmt.Println("Timeout occurred.")
 	}
 }
+
+/**
+select 实现channel的优先级
+
+解题思路：
+当两个channel都无数据到达时，程序将阻塞在外层select里；
+当lowChan有数据到达时进入，则进入内层，此时只监听highChan，
+并增加default分支以进行正常业务流程。
+*/
+func priorityChannel(highChan chan int, lowChan chan int) {
+LOOP:
+	for {
+		select {
+		case <-highChan:
+			fmt.Print("highChan is true")
+			break LOOP
+		case <-lowChan:
+			for {
+				select {
+				case <-highChan:
+					fmt.Print("lowChan is true")
+					break LOOP
+				default:
+					break LOOP
+				}
+			}
+		}
+	}
+}
