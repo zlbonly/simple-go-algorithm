@@ -39,8 +39,8 @@ import (
 			1、锁定整个通道结构
 			2、判断当前等待读取消息的recvq队列是否为空，如果不为空，说明缓冲区中没有数据，或者没有缓冲区，此时直接从
 				recvq队列中取出G，并把数据写入，最后把该G唤醒，结束发送过程
-			3、如果等待读取消息的recvq队列为空，判断缓冲区是否为空，如果缓冲区不为空，则向缓冲区写入数据，结束发送流程
-				如果缓冲区为空，将数据写入当前的G，并把当前的G加入到sendq，然后进入睡眠，等待被读取数据的goroutine唤醒
+			3、如果等待读取消息的recvq队列为空，判断缓冲区是否为满，如果缓冲区不满，则向缓冲区写入数据，结束发送流程
+				如果缓冲区已满，将数据写入当前的G，并把当前的G加入到sendq，然后进入睡眠，等待被读取数据的goroutine唤醒
 			4、解除mutex锁
 
 			流程图参考：
@@ -337,4 +337,28 @@ LOOP:
 			}
 		}
 	}
+}
+
+/**
+控制并发数量。（开启10个协程，同一时刻最多执行3个，中间有一个执行完了通知下一个）
+
+*/
+func controlChannelGoroutineNums() {
+	count := 9
+	limit := 3
+	ch := make(chan bool, limit)
+	var wg sync.WaitGroup
+	wg.Add(count)
+	for i := 0; i < count; i++ {
+		go func(num int) {
+			defer wg.Done()
+			ch <- true
+			fmt.Printf("%d 我在执行，time %d\n", num, time.Now().Unix())
+			time.Sleep(2 * time.Second)
+			<-ch
+		}(i)
+	}
+
+	wg.Wait()
+	close(ch)
 }
