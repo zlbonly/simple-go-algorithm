@@ -1,28 +1,27 @@
-1、目前项目的架构流程，负载均衡，服务注册，服务发现流程.
 
 1、项目中 服务注册，服务发现，负载均衡 实现。
+    1、项目部署方案。。
+		基于k8s+istio 的 Service Mesh服务网格的方式部署。通过sidecar模式，在K8S的Pod结点中，同时部署go微服实例容器和代理容器。
+		简单理解成（在 Kubernetes 的 Pod 中，在原有的应用容器旁边运行一个 Sidecar 容器，可以理解为两个容器共享存储、网络等资源。但是Sidecar 代理接管进出应用容器的所有流量）.
 
-举例子：room服务 在k8s中，采用的是service Mesh 服务网格的部署方式。
+	2、服务注册
+		 1、使用consul实现服务注册。在服务启动的时候，将服务的信息注册到consul服务中。
+         2、在 Istio 控制面中，Pilot 组件负责管理服务网格内部的服务和流量策略。pilot-discovery服务 集成和适配consul注册表中的服务和服务实例，并 将服务信息和路由策略转换为 xDS 接口的标准数据结构，推送下发到数据面的 Envoy。
 
-		1、将每个服务的docker实例，以sidecar 边车的模式，注入到k8s的pod节点中。简单理解成（在 Kubernetes 的 Pod 中，在原有的应用容器旁边运行一个 Sidecar 容器，可以理解为两个容器共享存储、网络等资源。但是Sidecar 代理接管进出应用容器的所有流量）
-
-		2、Service Mesh 的边车模式是通过Istio实现的。
-			1、Istio 的架构由两部分组成，分别是数据平面（Data Plane）和控制平面（Control Plane）
-				1、Control Panel（控制平面）：负责数据下发，如服务/服务实例数据、服务治理配置数据。envoy
-				2、Data Panel（数据平面）：高性能Proxy负责具体的流量治理。 主要的组件为Pilot
-
-
-		3、服务注册和服务发现
-			1、使用consul实现服务注册。在服务启动的时候，将服务的信息注册到consul服务中。
-
-			2、在 Istio 控制面中，Pilot 组件负责管理服务网格内部的服务和流量策略。pilot-discovery 集成和适配consul注册表中的服务和服务实例，并 将服务信息和路由策略转换为 xDS 接口的标准数据结构，推送下发到数据面的 Envoy。
-
-			3、数据层面 envoy的动态配置 适配 通过xDs-api获取Pilot下发的服务信息，完成服务发现。并在配置文件中
-				制定round_bin轮询的的负载均衡策略。
+	3、服务发现和负载均衡
+		1、Service mesh 的数据平面 Envoy 组件，通过调用Pilot服务提供的xDS API 动态的获取部署的服务实例列表.
+		2、K8S 会为每一个Service 分配一个虚拟的ClusterIP 集群IP,并且k8s将Service的名称当做域名注册到kube-dns中。
+		3、envoy proxy 代理监听请求的域名和端口，并通过kube-dns 解析获取具体的服务ip.
+		4、envoy根据配置的负载均衡策略（通常是round_robin 轮询）选择服务实例，并连接对应的实例地址。
 
 
+	4、Service Mesh 服务网格部署方案的优点。
+		1、将业务逻辑和服务治理逻辑分层和解耦，减少对业务代码的侵入。
+		2、与语言无关，可以对分布式的微服务集中治理。
 
-		4、另外pilot中通过配置Prometheus 和 Grafana 实现监控报警
+
+
+	5、另外pilot中通过配置Prometheus 和 Grafana 实现监控报警
 		   通过配置 Jaeger 实现链路追踪。
 		   目前缺少日志收集。 目前的日志都记录在了每天产生具体的文件中，未来考虑 介入
 
@@ -35,13 +34,13 @@
 
 	举例分析：web restful api  -> php  - > grpc -> go微服务
 
-1、 例如 resuful api  的借口 live.qq.com/api/index  =》 php
-	1、首先通过 dns解析，获取 live.qq.com 对应的ip地址，根据ip地址 找到 nginx反向代理服务器。
-	2、nginx 代理服务器，通过轮询的策略进行负载均衡，将请求转发到 部署的php 服务器。
+    1、 例如 resuful api  的借口 live.qq.com/api/index  =》 php
+        1、首先通过 dns解析，获取 live.qq.com 对应的ip地址，根据ip地址 找到 nginx反向代理服务器。
+        2、nginx 代理服务器，通过轮询的策略进行负载均衡，将请求转发到 部署的php 服务器。
 
-2、php 中 发起 grpc 调用 请求 -》 go微服务。
-	1、以房间服务为例子 room.srv.qie.tv rpc服务地址。
-		rpc服务的地址。命名的规则 =》 服务名.srv.qie.tv(k8s集群的service名)
-		调用room.srv.qie.tv时，根据配置的host域名访问方式，进行请求。 并且在内网中劫持room.srv.qie.tv的请求，
-		将请求转发到 k8s集群对应的pod中。
-	2、边车的envoy-proxy 代理 根据负载均衡策略。将具体的请求，转发到 pod中的实例中。
+    2、php 中 发起 grpc 调用 请求 -》 go微服务。
+        1、以房间服务为例子 room.srv.qie.tv rpc服务地址。
+            rpc服务的地址。命名的规则 =》 服务名.srv.qie.tv(k8s集群的service名)
+            调用room.srv.qie.tv时，根据配置的host域名访问方式，进行请求。 并且在内网中劫持room.srv.qie.tv的请求，
+            将请求转发到 k8s集群对应的pod中。
+        2、边车的envoy-proxy 代理 根据负载均衡策略。将具体的请求，转发到 pod中的服务实例中。
