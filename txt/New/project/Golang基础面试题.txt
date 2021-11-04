@@ -1,17 +1,9 @@
 goland面试题
 一、基础语法
-
 1、空 struct{} 的用途
-
 	1、首先 空结构体 不占用空间（使用unsafe.Sizeof输出发现空结构体不占用任何的内存空间）因此，
 	空结构体长用来作占位符。使用场景例如
-
-	场景1、
-		Go标准库没有提供集合Set实现，通常使用map来替代。但是对于集合来说，只需要map的健，
-		不需要值。即使将值设置为bool类型，也会多占用一个字节空间。因此可以将值定义为空结构体，
-		仅作为占位符使用。
-
-	场景2:
+	场景1
 		2、不发送数据的信道(channel)
 		有时候使用channel不用来发送数据，只用来通知子协程（goroutine）执行任务或者控制并发度，
 		这种情况下可以使用空结构体。
@@ -30,157 +22,15 @@ goland面试题
 				ch <- struct{}{}
 		}
 
-	场景3:	仅包含方法的结构体
-		type Door struct{}
+    2、struct 能不能比较
+        1、同一个struct的两个实例能不能比较。
+           1、结构体成员中没有不可以比较的成员时，可以直接比较。
+           2、结构体成员中有不可以比较的成员时，结构体成员中，有不可以比较的成员时，不能直接比较。但是可以借助reflect.DeepEqual()进行深度比较。
+            说明：DeepEqual函数用来判断两个值是否深度一致
 
-		func (d Door) Open() {
-				fmt.Println("Open the door")
-		}
-
-		func (d Door) Close() {
-				fmt.Println("Close the door")
-		}
-		在部分场景下，结构体只包含方法，不包含任何的字段。例如上面例子中的 Door，在这种情况下，Door 事实上可以用任何的数据结构替代。例如 type Door int
-
-
-2、 Go 语言中如何表示枚举值(enums
-	Go 本身不提供枚举类型，要定义枚举类型，可以使用const 配合iota常量生成器来使用。iota 不仅只生成每次增加 1 的枚举值。我们还可以利用 iota 来做一些强大的枚举常量值生成器。
-
-	eg:
-	type WeekDay int
-
-	const (
-			Sunday int  = iota
-			Monday
-			Tuesday
-			Wednesday
-			Thursday
-			Friday
-			Saturday
-
-	)
-
-
-3、go 打印 %v %+v %#v 的区别
-
-		1. %v    只输出所有的值
-
-		2. %+v 先输出字段，再输出该字段的值
-
-		3. %#v 先输出结构体名字值，再输出结构体（字段类型+字段的值）
-
-
-4、 如何判断 2 个字符串切片（slice) 是相等的？
-
-	1、reflect比较的方法
-		func StringSliceReflectEqual(a, b []string) bool {
-    			return reflect.DeepEqual(a, b)
-		}
-	2、循环遍历比较的方法
-
-		func StringSliceEqual(a, b []string) bool {
-    			if len(a) != len(b) {
-     				   return false
-    			}
-
-   				 if (a == nil) != (b == nil) {
-        				return false
-    			}
-
-    			for i, v := range a {
-      					if v != b[i] {
-          				return false
-        			}
-   			 }
-
-    			return true
-		}
-
-
-
-	先比较长度是否相等，否则false；再比较两个slice是否都为nil或都不为nil，否则false；再比较对应索引处两个slice的元素是否相等，否则false；前面都为是则true
-
-	if (a == nil) != (b == nil) {
-    		return false
-	}
-
-	在大多数情况下，上面的函数可以正常工作，但是增加这段代码的作用是与reflect.DeepEqual的结果保持一致：
-	[]int{} != []int(nil)
-
-5、Golang 的Tag的作用
-	我们可以通过Tag来增强结构体的定义，Tag会带上一些meta信息，在本文中我们将通过几个例子来深入了解Tag的用法。
-
-
-6、关于Golang 交换2个变量值方法的总结
-
-	//  使用第三变量交换a,b值
-	func testSwap1(a *int, b *int) {
-		temp := *a
-		*a = *b
-		*b = temp
-		return
-	}
-
-	//  使用第三变量交换a,b值:go 直接交换值
-	func testSwap2(a *int, b *int) {
-		*a, *b = *b, *a
-	}
-
-	//  不使用第三变量交换a,b值：直接返回
-	func testSwap3(a int, b int) (int, int) {
-		return b, a
-	}
-
-
-
-7、对已经关闭的channel进行读写会发生什么
-	1、读已经关闭的chan能一直读到东西，但是读到的内容根据通道内关闭前是否有元素2而不同
-		a、如果chan关闭前，buffer内有元素还未读，会正确读到channel内的值，且返回第二个bool内的值（是否读成功）为true
-		b、如果channel关闭前，buffer内的元素已经读完，channel内无值，接下来所有的接收都将非阻塞并且直接成功，返回 channel 元素的零值，但是第二个 bool 值一直为 false。
-
-	2、写已经关闭的 chan 会 panic
-
-
-	源码：
-
-	//在 src/runtime/chan.go
-	func chansend(c *hchan,ep unsafe.Pointer,block bool,callerpc uintptr) bool {
-    	//省略其他
-    	if c.closed != 0 {
-        	unlock(&c.lock)
-        	panic(plainError("send on closed channel"))
-    	}
-   	 //省略其他
-	}
-
-	当 c.closed != 0 则为通道关闭，此时执行写，源码提示直接 panic，输出的内容就是上面提到的 "send on closed channel"。
-
-
-
-8、无缓存通道和有缓存通道
-	1、无缓存通道创建 （读写同步）
-		channel1 := make(chan int ,0) //第二个参数为0，或者不写第二个参数
-	无缓冲通道的特点是，发送的数据需要被读取后，发送才会完成
-
-	2、有缓存通道创建 （读写不同步）
-		ch := make(chan int, 3)  //容量是3
-
-阻塞场景：阻塞场景共4个，有缓存和无缓冲各2个。
-
-	1、无缓存通道阻塞
-		1、通道中无数据，但是执行读通道
-		2、通道无数据，向通道中写数据，但是无协程读取
-
-	2、有缓存通道阻塞
-		1、通道的缓存无数据，但是执行读通道
-		2、通道的缓存已经占满，向通道中写数据，但是无协程读。
-
-	3、解决阻塞的方案
-		1、使用select的default语句，在channel不可读写时，即可返回
-		2、使用select+定时器，在超时时间内，channel不可读写，则返回
-
-
-9、 init() 函数是什么时候执行的？
+        2、两个不同的struct的实例能不能比较。
+            两个不同的struct不能比较。
+2、 init() 函数是什么时候执行的？
 	1、在 Go 语言设计过程中保留了默认的两个函数，分别是 main() 和 init() 函数。
 		main() 函数只能使用于 main 包中，而且每个 main 包只能有 一个main() 函数
 	但对于 init() 函数, 则能够使用在所有的包中。而且一个程序（甚至一个文件）中可以写任意多个 init() 函数
@@ -190,59 +40,14 @@ goland面试题
 	不同包的 init()执行顺序，按照 导入包的依赖关系 决定
 	3、golang runtime执行顺序 执行顺序总结： import –> const –> var –> init() –> main()
 
-	4、在 Golang 中程序的 初始化先于 main() 执行：具体由 runtime 初始化每个被导入的包。
-
-		1、初始化顺序是按照解析的依赖关系的顺序执行，没有依赖的包最先初始化。
-		2、首先初始化的是 每个包作用域内的常量、变量（其中：常量先于变量），之后执行包内 init()。
-		3、相同一个包、文件可以同时拥有多个 init()。init() 和 main() 一样，没有任何参数和返回值，不能够被其他函数调用。
-		4、同一个包、文件 多个 init() 执行顺序并未明确。
-
-
-10、golang 两个 nil 可能不相等吗？
-	接口(interface) 是对非接口值(例如指针，struct等)的封装，内部实现包含 2 个字段，类型 T 和 值 V。一个接口等于 nil，当且仅当 T 和 V 处于 unset 状态（T=nil，V is unset）。
-	两个接口值比较时，会先比较 T，再比较 V。接口值与非接口值比较时，会先将非接口值尝试转换为接口值，再比较。
-	eg:
-		func main() {
-   				var p *int = nil
-    			var i interface{} = p
-   				fmt.Println(i == p) // true
-    			fmt.Println(p == nil) // true
-    			fmt.Println(i == nil) // false
-		}
-
-		但是当 i 与 nil 比较时，会将 nil 转换为接口 (T=nil, V=nil)，与i (T=*int, V=nil) 不相等，因此 i != nil。因此 V 为 nil ，但 T 不为 nil 的接口不等于 nil。
-
-
-11、goalng函数返回局部变量的指针是否安全？
-	这在 Go 中是安全的，Go 编译器将会对每个局部变量进行逃逸分析。如果发现局部变量的作用域超出该函数，则不会将内存分配在栈上，而是分配在堆上。
-
-12、golang 中堆和栈 内存 分配，逃逸分析
-
-	1、首先 内存空间包含两个重要区域：栈区（Stack）和堆区（Heap）。函数调用的参数、返回值以及局部变量大都会被分配到栈上，这部分内存会由编译器进行管理；
-	堆区是向上增长的用于分配程序员申请的内存空间
-	另外还有静态区和只读区（等）
-
-	2、Go 是自己管理内存的，而不是交给操作系统，它每次从操作系统申请一大块内存，然后按照 Google 的 TCMalloc 算法进行内存分配，也划分为堆、栈等很多区域。
-	这里我们主要关心变量究竟放在堆还是栈里，官方有这么一段解释
-
-	只要有对变量的引用，变量就会存在，而它存储的位置与语言的语义无关。如果可能，变量会被分配到其函数的栈，但如果编译器无法证明函数返回之后变量是否仍然被引用，就必须在堆上分配该变量，采用垃圾回收机制进行管理，从而避免指针悬空。此外，局部变量如果非常大，也会存在堆上。
-
-	在编译器中，如果变量具有地址，就作为堆分配的候选，但如果逃逸分析可以确定其生存周期不会超过函数返回，就会分配在栈上。
-	总之，分配在堆还是栈完全由编译器确定。
-
-	3、逃逸分析  参考原来的总结。
-
-13、	go语言select机制
-
-1、select系统调用可以同时监听多个文件描述符的可读或者可写状态。Go语言中 select 也能够让 Goroutine 同时等待多个 Channel 可读或者可写，在多个文件或者 Channel状态改变之前，select 会一直阻塞当前线程或者 Goroutine。
-	a: select 能在 Channel 上进行非阻塞的收发操作；
-	b: select 在遇到多个 Channel 同时响应时，会随机执行一种情况；
-	c: 非阻塞的收发 #在通常情况下，select 语句会阻塞当前 Goroutine 并等待多个 Channel 中的一个达到可以收发的状态。但是如果 select 控制结构中包含 default 语句，那么这个 select 语句在执行时会遇到以下两种情况：
-	当存在可以收发的 Channel 时，直接处理该 Channel 对应的 case；
-	当不存在可以收发的 Channel 时，执行 default 中的语句；
-
-
-14、 以下代码有什么问题，说明原因。
+3、go语言select机制
+    1、select系统调用可以同时监听多个文件描述符的可读或者可写状态。Go语言中 select 也能够让 Goroutine 同时等待多个 Channel 可读或者可写，在多个文件或者 Channel状态改变之前，select 会一直阻塞当前线程或者 Goroutine。
+        a: select 能在 Channel 上进行非阻塞的收发操作；
+        b: select 在遇到多个 Channel 同时响应时，会随机执行一种情况；
+        c: 非阻塞的收发 #在通常情况下，select 语句会阻塞当前 Goroutine 并等待多个 Channel 中的一个达到可以收发的状态。但是如果 select 控制结构中包含 default 语句，那么这个 select 语句在执行时会遇到以下两种情况：
+        当存在可以收发的 Channel 时，直接处理该 Channel 对应的 case；
+        当不存在可以收发的 Channel 时，执行 default 中的语句；
+4、 以下代码有什么问题，说明原因。
 
 type Student struct {
 	Name string
@@ -276,57 +81,11 @@ func parseStudent()  {
 
 golang foreach 都是使用副本的方式。所以m[stu.Name]=&stu实际上一致指向同一个指针，最终该指针的值为遍历的最后一个struct的值拷贝
 
-
-、Go 语言的局部变量分配在栈上还是堆上？
-面试题链接：https://geektutu.com/post/qa-golang.html
-
-
-
-15、简单介绍下 golang 中 make 和 new 的区别？
+5、简单介绍下 golang 中 make 和 new 的区别？
 	1、new(T)是为一个 T 类型的新值分配空间, 并将此空间初始化为 T 的零值, 并返回这块内存空间的地址, 也就是 T 类型的指针 *T, 该指针指向 T 类型值占用的那块内存.
 	2、make(T)返回的是初始化之后的 T (引用类型本身), 且只能用于 slice, map, channel 三种类型. make(T, args) 返回初始化之后 T 类型的值, 且此新值并不是 T 类型的零值, 也不是 T 类型的指针 *T, 而是 T 类型值经过初始化之后的引用.
 
-16、如何获取 go 程序运行时的协程数量, gc 时间, 对象数, 堆栈信息?
-	调用接口runtime.ReadMemStats可以获取以上所有信息, 注意: 调用此接口会触发 STW(Stop The World)
-
-17、go语言中指针运算有哪些？
-	可以通过“&”取指针的地址 & 可以通过“*”取指针指向的数据
-
-18、go语言触发异常的场景有哪些？
-
-	A. 空指针解析
-
-	B. 下标越界
-
-	C. 除数为0
-
-	D. 调用panic函数
-
-
-19、	说说进程、线程、协程之间的区别？
-
-	1、进程是资源的分配和调度的一个独立单元，而线程是CPU调度的基本单元；
-
-	同一个进程中可以包括多个线程；进程结束后它拥有的所有线程都将销毁，而线程的结束不会影响同个进程中的其他线程的结束；
-	线程共享整个进程的资源（寄存器、堆栈、上下文），一个进程至少包括一个线程；
-
-	进程的创建调用fork或者vfork，而线程的创建调用pthread_create；
-	线程中执行时一般都要进行同步和互斥，因为他们共享同一进程的所有资源；
-
-
-	2、进程切换需要的资源很最大，效率很低 线程切换需要的资源一般，效率一般 协程切换任务资源很小，效率高 多进程、多线程根据cpu核数不一样可能是并行的 也可能是并发的。协程的本质就是使用当前进程在不同的函数代码中切换执行，可以理解为并行。 协程是一个用户层面的概念，不同协程的模型实现可能是单线程，也可能是多线程。
-
-	3、进程拥有自己独立的堆和栈，既不共享堆，亦不共享栈，进程由操作系统调度。（全局变量保存在堆中，局部变量及函数保存在栈中）
-，线程拥有自己独立的栈和共享的堆，共享堆，不共享栈，线程亦由操作系统调度(标准线程是这样的)。
-
-	4、协程和线程一样共享堆，不共享栈，协程由程序员在协程的代码里显示调度。
-
-	一个应用程序一般对应一个进程，一个进程一般有一个主线程，还有若干个辅助线程，线程之间是平行运行的，在线程里面可以开启协程，让程序在特定的时间内运行。
-
-	协程和线程的区别是：协程避免了无意义的调度，由此可以提高性能，但也因此，程序员必须自己承担调度的责任，同时，协程也失去了标准线程使用多CPU的能力。
-
-
-19、区分闭包函数,defer ，recover ，有名函数，无名函数
+6、区分闭包函数,defer ，recover ，有名函数，无名函数
 1、  闭包函数，又称匿名函数
    1、闭包可能会导致变量逃逸到堆上来延长变量的生命周期，给 GC 带来压力。
    2、  内函数对外函数的变量的修改，是对变量的引用。共享一个在堆上的变量。 变量被引用后，它所在的函数结束，这变量也不会马上被销毁。相当于变相延长了函数的生命周期。
@@ -358,38 +117,7 @@ golang foreach 都是使用副本的方式。所以m[stu.Name]=&stu实际上一�
             myFunc()       //12
 
         }
-
-    （3）通过for循环的案例分析闭包对引用环境中变量的调用问题
-        func main() {
-            s := []string{"a", "b", "c"}
-            for _, v := range s {
-                go func() {
-                    fmt.Println(v)
-                }()
-            }
-            time.Sleep(time.Second * 1)
-        }
-
-        这是因为for语句里面中闭包使用的v是外部的v变量，当执行完循环之后，v最终是c,所以输出了 c, c, c。 如果你去执行，有可能也不是这个结果。 输出这个结果的前提是“在主协程执行完for之后，定义的子协程 才开始执行，如果for过程中，子协程执行了，结果就可能不是c， c，c”。 输出的结果依赖于子协程执行时的那一刻，v是什么。
-
-
-       func main() {
-             s := []string{"a", "b", "c"}
-           for _, v := range s {
-               go func() {
-                   fmt.Println(v)
-               }()
-               time.Sleep(time.Second * 3)
-           }
-           fmt.Println("main routine")
-           time.Sleep(time.Second * 1)    // 阻塞模式
-       }
-
-       此时输出的就是 a, b, c , main routine
-
-
-
-3、return xxx这一条语句并不是一条原子指令
+7、return xxx这一条语句并不是一条原子指令
   1、含有defer函数的外层函数，返回的过程是这样的：先给返回值赋值，然后调用defer函数，最后才是返回到更上一级调用函数中
   2、defer函数的参数值，是在申明defer时确定下来的
   3、在defer函数申明时，对外部变量的引用是有两种方式：作为函数参数和作为闭包引用
@@ -410,107 +138,82 @@ golang foreach 都是使用副本的方式。所以m[stu.Name]=&stu实际上一�
     Recover
     recover是go语言的内置函数，它的主要作用是可以从panic的重新夺回goroutine的控制权。
     Recover必须通过defer来运行。在正常的执行流程中，调用recover将会返回nil且没有什么其他的影响。但是如果当前的goroutine产生了panic，recover将会捕获到panic抛出的信息，同时恢复其正常的执行流程。
+    	defer func() {
+    		if r := recover(); r != nil {
+    			tx.Rollback()
+    		}
+    	}()
+
+8、golang 使用组合的方式实现继承
+     golang并非完全面向对象的程序语言，为了实现面向对象的继承这一神奇的功能，golang允许struct间使用匿名引入的方式实现对象属性方法的组合
+
+     组合使用注意项
+     使用匿名引入的方式来组合其他struct
+     默认优先调用外层方法
+     可以指定匿名struct以调用内层方法
+
+     type People struct{}
+
+     type People2 struct{}
+
+     func (p *People) ShowA() {
+         fmt.Println("showA")
+         p.ShowB()
+     }
+     func (p *People) ShowB() {
+         fmt.Println("showB")
+     }
+
+     func (p *People) ShowC() {
+         fmt.Println("showC")
+     }
+
+     func (p *People) ShowD() {
+         fmt.Println("People:showD")
+     }
+
+     func (p *People2) ShowD() {
+         fmt.Println("People2:showD")
+     }
+
+     type Teacher struct {
+         People  //组合People
+         People2 //组合People2
+     }
+
+     func (t *Teacher) ShowB() {
+         fmt.Println("teacher showB")
+     }
+     func (t *Teacher) ShowC(arg string) {
+         fmt.Println(arg)
+     }
+
+     func main() {
+         t := Teacher{}
+
+         //print showA
+         //print showB
+         t.ShowA()
+
+         //print teacher showB
+         t.ShowB()
+
+         //print showB
+         t.People.ShowB()
+
+         //print test
+         t.ShowC("test")
+
+         //print showC
+         t.People.ShowC()
+
+         //因为组合方法中多次包含ShowD，所以调用时必须显示指定匿名方法
+         //print People2:showD
+         t.People2.ShowD()
+     }
 
 
-4、make 和 new的区别
-  func new(Type) *Type
-  func make(t Type, size ...IntegerType) Type
-  从定义中可以看出，new返回的是指向Type的指针。 make直接返回的是Type类型值。
-
-
-    1、make也是用于内存分配的，但是和new不同，它只用于chan、map以及切片的内存创建，
-    而且它返回的类型就是这三个类型本身，而不是他们的指针类型，
-    因为这三种类型就是引用类型，所以就没有必要返回他们的指针了。
-
-    2、new 返回一个指向该类型内存地址的指针，同时请注意它同时把分配的内存置为零，也就是类型的零值。
-    func main() {
-     var i *int
-     *i=10
-     fmt.Println(*i)
-    }
-    panic: runtime error: invalid memory address or nil pointer dereference
- 原因：    对于引用类型的变量，我们不光要声明它，还要为它分配内容空间，
-
-        func main() {
-         var i *int
-         i=new(int)
-         *i=10
-         fmt.Println(*i)
-        }
-
-
-
- 1、golang 使用组合的方式实现继承
-
- golang并非完全面向对象的程序语言，为了实现面向对象的继承这一神奇的功能，golang允许struct间使用匿名引入的方式实现对象属性方法的组合
-
- 组合使用注意项
- 使用匿名引入的方式来组合其他struct
- 默认优先调用外层方法
- 可以指定匿名struct以调用内层方法
-
- type People struct{}
-
- type People2 struct{}
-
- func (p *People) ShowA() {
-     fmt.Println("showA")
-     p.ShowB()
- }
- func (p *People) ShowB() {
-     fmt.Println("showB")
- }
-
- func (p *People) ShowC() {
-     fmt.Println("showC")
- }
-
- func (p *People) ShowD() {
-     fmt.Println("People:showD")
- }
-
- func (p *People2) ShowD() {
-     fmt.Println("People2:showD")
- }
-
- type Teacher struct {
-     People  //组合People
-     People2 //组合People2
- }
-
- func (t *Teacher) ShowB() {
-     fmt.Println("teacher showB")
- }
- func (t *Teacher) ShowC(arg string) {
-     fmt.Println(arg)
- }
-
- func main() {
-     t := Teacher{}
-
-     //print showA
-     //print showB
-     t.ShowA()
-
-     //print teacher showB
-     t.ShowB()
-
-     //print showB
-     t.People.ShowB()
-
-     //print test
-     t.ShowC("test")
-
-     //print showC
-     t.People.ShowC()
-
-     //因为组合方法中多次包含ShowD，所以调用时必须显示指定匿名方法
-     //print People2:showD
-     t.People2.ShowD()
- }
-
-
-2、golang nil slice 和 empty slic 的区别 空切片
+10、golang nil slice 和 empty slic 的区别 空切片
 
 	1、var slice []int 创建出来的 slice 其实是一个 nil slice。它的长度和容量都为0。和nil比较的结果为true。这里比较混淆的是empty slice，empty slice的长度和容量也都为0，但是所有的空切片的数据指针都指向同一个地址 0xc42003bda0。空切片和 nil 比较的结果为false。
 
