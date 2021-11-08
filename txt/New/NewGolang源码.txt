@@ -86,129 +86,6 @@
 			    if !ok{
 			        return
 			    }
-
-
-
-2、channel 实现
-	Go并发的哲学，基于channel实现。“不是通过共享内存实现通信，而是通过通信来共享内存”
-
-	runtime/chan.go
-	1、hchan数据结构
-		type hchan struct {
-		    qcount   uint           // 队列中剩余元素
-		    dataqsiz uint           // 队列长度，eg make(chan int64, 5), dataqsiz为5
-		    buf      unsafe.Pointer // 数据存储环形数组
-		    elemsize uint16         // 每个元素的大小
-		    closed   uint32         // 是否关闭 0 未关闭
-		    elemtype *_type         // 元素类型
-		    sendx    uint           // 发送者写入位置
-		    recvx    uint           // 接受者读数据位置
-		    recvq    waitq          // 接收者队列，保存正在读取channel的goroutine
-		    sendq    waitq          // 发送者队列，保存正在发送channel的goroutine
-		    lock     mutex          // 锁
-		}
-
-		waitq 是双向链表，sudog 为 goroutine 的封装
-		type waitq struct {
-		    first *sudog
-		    last  *sudog
-		}
-
-
-
-        2、channel发送和接收的流程
-            向channel发送和从channel接收数据主要涉及hchan里的四个成员变量（buf,sendx,recvx,lock），借用Kavya ppt里的图示，来分析发送和接收的过程
-            如图：https://pic1.zhimg.com/v2-c2549285cd3bbfd1fcb9a131d8a6c40c_b.webp
-
-        还是以前面的任务队列为例:
-
-        G1
-        func main(){
-            ...
-
-            for _, task := range hellaTasks {
-                ch <- task    //sender
-            }
-
-            ...
-        }
-
-        //G2
-        func worker(ch chan Task){
-            for {
-               //接受任务
-               task := <- ch  //recevier
-               process(task)
-            }
-        }
-        其中G1是发送者，G2是接收，因为ch是长度为3的带缓冲channel，初始的时候hchan结构体的buf为空，sendx和recvx都为0，当G1向ch里发送数据的时候，会首先对buf加锁，然后将要发送的数据copy到buf里，并增加sendx的值，最后释放buf的锁。然后G2消费的时候首先对buf加锁，然后将buf里的数据copy到task变量对应的内存里，增加recvx，最后释放锁。整个过程，G1和G2没有共享的内存，底层通过hchan结构体的buf，使用copy内存的方式进行通信，最后达到了共享内存的目的.
-
-        3、一般情况下，G2的消费速度应该是慢于G1的，所以buf的数据会越来越多，这个时候G1再向ch里发送数据，这个时候G1就会阻塞，那么阻塞到底是发生了什么呢？
-
-            goroutine是Golang实现的用户空间的轻量级的线程，有runtime调度器调度，与操作系统的thread有多对一的关系
-            其中M是操作系统的线程，G是用户启动的goroutine，P是与调度相关的context，每个M都拥有一个P，P维护了一个能够运行的goutine队列，用于该线程执行。
-
-            1、当G1向buf已经满了的ch发送数据的时候，当runtine检测到对应的hchan的buf已经满了，会通知调度器，调度器会将G1的状态设置为waiting, 移除与线程M的联系，然后从P的runqueue中选择一个goroutine在线程M中执行，此时G1就是阻塞状态，但是不是操作系统的线程阻塞，所以这个时候只用消耗少量的资源。
-
-            2、当G1变为waiting状态后，会创建一个代表自己的sudog的结构，然后放到sendq这个list中，sudog结构中保存了channel相关的变量的指针(如果该Goroutine是sender，那么保存的是待发送数据的变量的地址，如果是receiver则为接收数据的变量的地址，之所以是地址，前面我们提到在传输数据的时候使用的是copy的方式)
-            3、当G2从ch中接收一个数据时，会通知调度器，设置G1的状态为runnable，然后将加入P的runqueue里，等待线程执行
-
-
-
-        4、wait empty channel
-
-            前面我们是假设G1先运行，如果G2先运行会怎么样呢？如果G2先运行，那么G2会从一个empty的channel里取数据，这个时候G2就会阻塞，和前面介绍的G1阻塞一样，G2也会创建一个sudog结构体，保存接收数据的变量的地址，但是该sudog结构体是放到了recvq列表里，当G1向ch发送数据的时候，runtime并没有对hchan结构体题的buf进行加锁，而是直接将G1里的发送到ch的数据copy到了G2 sudog里对应的elem指向的内存地址！
-
-
-            参考如图：https://zhuanlan.zhihu.com/p/27917262
-
-
-
-        5、channel应用场景
-            1、数据交流：当作并发的 buffer 或者 queue，解决生产者 - 消费者问题。多个 goroutine 可以并发当作生产者（Producer）和消费者（Consumer）。
-            2、数据传递：一个goroutine将数据交给另一个goroutine，相当于把数据的拥有权托付出去。
-            3、信号通知：一个goroutine可以将信号(closing，closed，data ready等)传递给另一个或者另一组goroutine。
-            4、任务编排：可以让一组goroutine按照一定的顺序并发或者串行的执行，这就是编排功能。
-            5、锁机制：利用channel实现互斥机制。
-
-
-        6、无缓冲通道和 缓存为1的通道的区别
-            golang channel 有缓冲 与 无缓冲 是有重要区别的 。我之前天真的认为 有缓冲与无缓冲的区别 只是 无缓冲的 是 默认 缓冲 为1 的缓冲式。其实是彻底错误的，无缓冲的与有缓冲channel有着重大差别
-            1、那就是一个是同步的 一个是非同步的
-
-                c1:=make(chan int)        无缓冲
-                c2:=make(chan int,1)      有缓冲
-                c1<-1
-
-            解释：无缓冲的 不仅仅是 向 c1 通道放 1 而是 一直要有别的携程 <-c1 接手了 这个参数，那么c1<-1才会继续下去，要不然就一直阻塞着
-            而 c2<-1 则不会阻塞，因为缓冲大小是1 只有当 放第二个值的时候 第一个还没被人拿走，这时候才会阻塞。
-
-            无缓冲的channel的读写者必须同时完成发送和接收，而不能串行，显然单协程无法满足。所以这里造成了循环等待，会死锁。
-        7、优雅的关闭channel
-          原则：  不要从一个 receiver 侧关闭 channel，也不要在有多个 sender 时，关闭 channel。
-            根据 sender 和 receiver 的个数，分下面几种情况：
-            1、一个 sender，一个 receiver
-            2、 一个 sender， M 个 receiver
-            3、N 个 sender，一个 reciver
-            4、N 个 sender， M 个 receiver
-            对于 1，2，只有一个 sender 的情况就不用说了，直接从 sender 端关闭就好了，没有问题。重点关注第 3，4 种情况。
-            对于 3解决方案就是增加一个传递关闭信号的 channel，receiver 通过信号 channel 下达关闭数据 channel 指令。senders 监听到关闭信号后，停止发送数据
-            对于4 通过一个中间人来关闭channel
-        8、channel导致死锁
-            1、同一个goroutine中，使用同一个 channel 读写。
-                    func main(){
-                        ch:=make(chan int)  //这就是在main程里面发生的死锁情况
-                        ch<-6   //  这里会发生一直阻塞的情况，执行不到下面一句
-                        <-ch
-                    }
-             2、第二种：2个 以上的go程中， 使用同一个 channel 通信。 读写channel 先于 go程创建。
-                func main(){
-                    ch:=make(chan int)
-                    ch<-666    //这里一直阻塞，运行不到下面
-                    go func (){
-                        <-ch  //这里虽然创建了子go程用来读出数据，但是上面会一直阻塞运行不到下面
-                    }()
-                }
 3、Context
 	1、背景
 		Go 1.7 标准库引入 context，中文译作“上下文”，准确说它是 goroutine 的上下文，context 主要用来在 goroutine 之间传递上下文信息，包括：取消信号、超时时间、截止时间、k-v 等。
@@ -222,7 +99,6 @@
 			2、    Err() error 在 channel Done 关闭后，返回 context 取消原因
 			3、 Deadline() (deadline time.Time, ok bool)		返回 context 是否会被取消以及自动取消时间（即 deadline）
 			4、Value() 获取之前设置的 key 对应的 value。
-
 
 	3、源码中定义了 Context 接口后，并且给出了一个实现：emptyCtx
 		这实际上是一个空的 context，永远不会被 cancel，没有存储值，也没有 deadline。
@@ -242,7 +118,6 @@
 		1、context.Background()：这个函数返回一个空context。这只能用于高等级（在 main 或顶级请求处理中）。
 		2、context.TODO()：这个函数也是创建一个空context。也只能用于高等级或当您不确定使用什么 context
 
-
 	4、有了根节点 context，又提供了四个函数创建子节点 context：
 			func WithCancel(parent Context) (ctx Context, cancel CancelFunc)
 			func WithDeadline(parent Context, deadline time.Time) (Context, CancelFunc)
@@ -251,7 +126,6 @@
 
 
 4、golang锁
-
  1、互斥锁 Mutex 和 读写锁 RWMutex
  	1、互斥锁 Mutex
  		1.互斥锁有两种操作，获取锁和释放锁
