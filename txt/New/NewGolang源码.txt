@@ -100,29 +100,58 @@
 			3、 Deadline() (deadline time.Time, ok bool)		返回 context 是否会被取消以及自动取消时间（即 deadline）
 			4、Value() 获取之前设置的 key 对应的 value。
 
-	3、源码中定义了 Context 接口后，并且给出了一个实现：emptyCtx
-		这实际上是一个空的 context，永远不会被 cancel，没有存储值，也没有 deadline。
-		var (
-		    background = new(emptyCtx)
-		    todo       = new(emptyCtx)
-		)
 
-		func Background() Context {
-    		return background
-		}
+			这个接口主要被三个类继承实现，分别是emptyCtx、ValueCtx、cancelCtx
 
-		func TODO() Context {
-		    return todo
-		}
+	3、context类型
+		1、emptyCtx
+		    1、emptyCtx 是context.Background 和 context.TODO()的底层实现。
+		    它是一个int类型，实现了Context接口所有的方法，但是没有做任何处理，都是默认返回空值。
+		    2、emptyCtx结构体类型，是一个不可取消，没有设置截止时间，没有携带任何值的Context
+		    3、
+		2、cancelCtx
+            type cancelCtx struct {
+            	Context
 
-		1、context.Background()：这个函数返回一个空context。这只能用于高等级（在 main 或顶级请求处理中）。
-		2、context.TODO()：这个函数也是创建一个空context。也只能用于高等级或当您不确定使用什么 context
+            	// 保护之后的字段
+            	mu       sync.Mutex
+            	done     chan struct{}
+            	children map[canceler]struct{}
+            	err      error
+            }
 
+            1、WithCancelCtx()的底层实现。它直接将接口 Context 作为它的一个匿名字段
+            2、从 parent Context 创建一个带有取消方法的 child Context，该 Context 可以手动调用 cancel
+            3、cancelCtx 被定义为一个可以取消的 Context，而由于 Context 的树形结构，当作为 parent Context 取消时需要同步取消节点下所有
+                child Context，这时候只需要遍历 children map[canceler]struct{} 然后逐个取消即可
+		3、timerCtx
+            type timerCtx struct {
+                cancelCtx
+                timer *time.Timer // Under cancelCtx.mu.
+
+                deadline time.Time
+            }
+            1、timerCtx基于cancelCtx,只是多了一个timer.Timer 和一个deadline。timer会在deadline
+            到来时，自动取消context.
+            2、withTimeout和 WithDeadline的底层实现。
+		4、valueCtx
+		    type valueCtx struct {
+            	Context
+            	key, val interface{}
+            }
+
+		  1、 withValue（）底层实现 。直接将Context作为匿名字段，Context指向他的父节点，通过withValue()可以创建
+		   层层的valueCtx，存储goroutine间可以共享的变量。
+		  2、取值的过程，是一个向上递归的过程。先比较当前节点的key，如果存在，直接返回value，否者顺着context向上，
+		    最终找到跟节点，直接返回nil.
+		  3、父节点没有办法获取子节点存储的值，子节点可以获取父节点存储的值。
 	4、有了根节点 context，又提供了四个函数创建子节点 context：
 			func WithCancel(parent Context) (ctx Context, cancel CancelFunc)
 			func WithDeadline(parent Context, deadline time.Time) (Context, CancelFunc)
 			func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc)
 			func WithValue(parent Context, key, val interface{}) Context
+        这四个With函数，接收的都有一个partent参数，就是父Context，我们要基于这个父Context创建出子Context的意思，
+        这种方式可以理解为子Context对父Context的继承，也可以理解为基于父Context的衍生
 
 
 4、golang锁
