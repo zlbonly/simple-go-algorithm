@@ -110,9 +110,9 @@
 				3、抢占调度和协作调度：
 				    在Go的1.13版本中实现了协作式的抢占式调度
                     	1、协作式抢占调度的工作机制
-                    		1、runtime后台设置了一个检测线程sysmon。sysmon会检测P的状态及运行时间，当运行超过10ms时 ，就会给当前P中执行的G打上标记。把G对应的stackgurad设置为StackPreempt 。
-                    		2、G被打上标记，设置为StackPreempt后，在进入函数时 必定出发morestack函数，
-                    		3、	morestack 会将 goroutine 的现场保存在当前 goroutine 的 gobuf 中，并将执行栈切换到 g0，然后在 g0 上执行 runtime.newstack，当抢占成功后，当前的 goroutine 会被放在全局队列中：
+                    		1、runtime后台设置了一个检测线程sysmon。sysmon会检测P的状态及运行时间，当运行超过10ms时 ，就会给当前P中执行的G打上标记。
+                    		2、G被打上标记后，在进入函数时 必定出发morestack函数，
+                    		3、	morestack函数 会将 goroutine 的执行现场保存，让出cpu，当别的G抢占成功后，当前的 goroutine 会被放在全局队列中：
 
                     	2、缺点：
                     		当一个goroutine运行了很久，但是它并没有调用另一个函数，则它不会被抢占
@@ -125,12 +125,11 @@
 
                     在Go的1.14版本中实现了基于信号的抢占式调度
                     	工作机制如下
-                    	1、M 创建时注册一个 SIGURG 信号的处理函数：sighandler。
-                    	2、sysmon 线程检测到执行时间过长的 goroutine 或者GC stw 时，会向相应的 M发送 SIGURG 信号。
-                    	3、M收到信号后，内核执行 sighandler 回调 函数，强制 插入 asyncPreempt 异步调度函数，保存执行现场。
-                    	4、异步抢占回调函数把goroutine 的状态从 running 改成 runnable；接着调 dropg 将 g 和 m 解绑；然后 将 goroutine 丢到全局队列中
-                    		M 则继续寻找其他 goroutine 来运行
-                    	5、继续执行schedule()调度函数，被抢占的 goroutine 再次调度过来执行时，会继续原来的执行流。
+                    	1、M 创建时注册一个 SIGURG 信号，以及回调处理函数：sighandler。
+                    	2、sysmon 线程检测到执行时间过长的 goroutine ，一般超过10ms，会向相应的 M发送 SIGURG 信号。
+                    	3、M收到信号后，内核执行 sighandler 回调 函数，保存当前执行现场。
+                    	4、回调函数把goroutine 的状态从 running 改成 runnable；接着调 dropg 将 g 和 m 解绑；然后 将 goroutine 丢到全局队列中
+                    		M 则继续寻找其他 goroutine 来运行。
 
             4、源码
                 GMP源码
