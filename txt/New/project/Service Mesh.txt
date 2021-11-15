@@ -21,9 +21,11 @@
 
 
 
-	5、另外pilot中通过配置Prometheus 和 Grafana 实现监控报警
-		   通过配置 Jaeger 实现链路追踪。
-		   目前缺少日志收集。 目前的日志都记录在了每天产生具体的文件中，未来考虑 介入
+	5、另外service Mesh 很方便进行遥测信息的收集
+	    1、目前项目中使用 Prometheus + Grafana 也是实现监控报警。
+	    2、Jeager实现实现的分布式链路追踪（在服务中通过grpc拦截器，埋入请求，在k8s部署Jeager服务）
+	    3、目前缺少日志收集，未来考虑Fluent Bit 是针对 Kubernetes 用 C 语言重现的 Fluentd。它针对 Kubernetes 做了很多优化。
+            再配合 Elasticsearch/Mongodb，可以基本满足我们对日志搜集的需求
 
  	参考链接：
  		1、https://www.servicemesher.com/istio-handbook/practice/prometheus.html
