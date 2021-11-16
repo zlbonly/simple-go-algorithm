@@ -122,12 +122,12 @@
 		    			2、在字典中维持一个索引计数器变量rehashidx，并将它的值设置为0，表示rehash工作正式开始。
 		    			3、在rehash执行期间，每次对字典执行添加、删除、查找或者更新操作时，程序除了执行指定的操作外，还会顺带将ht[0]哈希表在rehashidx索引上的所有键值对rehash到ht[1]，当rehash工作完成后，程序将rehashidx属性的值增1
 		    			4、随着字典操作的不断执行，最终在某个时间点上，ht[0]的所有桶对应的键值对都会被rehash至ht[1]，这时程序将rehashidx属性的值设为-1，表示rehash操作已完成
-
+                        5、把ht[1]替换ht[0]
 		    		3、渐进式 rehash 执行期间的哈希表操作
 						1、删除和查找：在进行渐进式rehash的过程中，字典会同时使用ht[0]和ht[1]两个哈希表，所以在渐进式rehash进行期间，字典的删除、查找、更新等操作会在两个哈希表上进行。比如说，要在字典里面查找一个键的话，程序会先在ht[0]里面进行查找，如果没找到的话，就会继续到ht[1]里面进行查找，诸如此类。
 						2、新增数据：在渐进式 rehash 执行期间，新添加到字典的键值对一律会被保存到ht[1]里面，而ht[0]则不再进行任何添加操作。这一措施保证了ht[0]包含的键值对数量会只减不增，并随着rehash操作的执行而最终变成空表。
 
-3、Zset
+4、Zset
 	1、ziplist：满足以下两个条件的时候
 		1、元素数量少于128
 		2、每个元素的长度小于64字节
@@ -158,9 +158,29 @@
 
     		   O(logn)的平均时间复杂度，其空间复杂度为O(n)。
     		 3、redis 排名是怎么算出来的
+
+    		    typedef struct zskiplistNode {  // 跳跃表节点
+                    robj *obj;  // redis对象
+                    double score;   // 分值
+                    struct zskiplistNode *backward; // 后退指针
+                    struct zskiplistLevel {
+                        struct zskiplistNode *forward;  // 前进指针
+                        unsigned int span;  // 跨度
+                    } level[];
+                } zskiplistNode;
+
+                typedef struct zskiplist {
+                    struct zskiplistNode *header, *tail;
+                    unsigned long length;   // 跳跃表长度
+                    int level;  // 目前跳跃表的最大层数节点
+                } zskiplist
+
 	            zrank [zset name] [value]的实现依赖与一些附加在跳表上的属性：
-	            1、跳表的每个元素的Next指针都记录了这个指针能够跨越多少元素，redis在插入和删除元素的时候，都会更新这个值
+	            1、level[]存放指向各层链表后一个节点的指针（后向指针）。每层对应1个后向指针，用forward字段表示。另外，每个后向指针还对应了一个span值，它表示当前的指针跨越了多少个节点。
+	               redis在插入和删除元素的时候，都会更新这个值
 	            2、然后在搜索的过程中按经过的路径将路径中的span值相加得到rank
+                3、zrevrange的查询，是根据排名查数据，由扩展后的skiplist来提供。
+                  zrevrank是先在dict中由数据查到分数，再拿分数到skiplist中去查找，查到后也同时获得了排名。
 
 	         4、为什么采用跳表，而不使用哈希表或平衡树实现呢
 		        1、skiplist和各种平衡树（如AVL、红黑树等）的元素是有序排列的，而哈希表不是有序的。
