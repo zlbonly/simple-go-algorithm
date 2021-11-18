@@ -37,28 +37,18 @@
         1、interface底层由两部分组成：类型、值(type, value)，当二者均为nil时，此时interface才为nil。
 	3、golang interface底层源码分析
 		1、interface 底层接口
-			iface 和 eface 都是 Go 中描述接口的底层结构体，区别在于 iface 描述的接口包含方法，而 eface 则是不包含任何方法的空接口：interface{}。
+		    1、iface 和 eface 都是 Go 中描述接口的底层结构体，区别在于 iface 描述的接口包含方法，而 eface 则是不包含任何方法的空接口：interface{}。
+		    2、iface 内部维护两个指针，tab 指向一个 itab 实体， 它表示接口的类型以及赋给这个接口的实体类型。data 则指向接口具体的值，一般而言是一个指向堆内存的指针。
+                type iface struct {
+                    tab  *itab
+                    data unsafe.Pointer
+                }
+            3、相比 iface，eface 就比较简单了。只维护了一个 _type 字段，表示空接口所承载的具体的实体类型。data 描述了具体的值。
+                type eface struct {
+                    _type *_type
+                    data  unsafe.Pointer
+                }
 
-			1、
-			type iface struct {
-    			tab  *itab  // 指针类型，指向 itab 类型
-    			data unsafe.  // 描述了具体的值
-			}
-
-			type itab struct {
-			    inter *interfacetype
-			    _type *_type // // 通用的类型信息
-			    hash  uint32 // copy of _type.hash. Used for type switches.
-			    _     [4]byte
-			    fun   [1]uintptr // variable sized. fun[0]==0 means _type does not implement inter.
-			    	//  // 存储了接口方法对应的具体数据类型的方法地址
-			}
-			2、	空的 inferface{} 是没有方法集的接口。所以不需要 itab 数据结构。它只需要存类型和类型对应的值即可。对应的数据结构如下：
-
-			type eface struct { // 16 字节
-			    _type *_type
-			    data  unsafe.Pointer
-			}
 				从这个数据结构可以看出，只有当 2 个字段都为 nil，空接口才为 nil。空接口的主要目的有 2 个，一是实现“泛型”，二是使用反射。
 
 	4、类型断言
