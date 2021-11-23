@@ -449,6 +449,14 @@
             请求数据不在GET方法中使用，而是在POST方法中使用。POST方法适用于需要客户填写表单的场合。
             与请求数据相关的最常使用的请求头是Content-Type和Content-Length。
 
+        5、Content-length长度
+        1、Content-Length用于描述HTTP消息实体的传输长度.Content-Length如果存在并且有效的话，则必须和消息内容的传输长度完全一致。（经过测试，如果过短则会截断，过长则会导致超时。）
+          2、如果存在Transfer-Encoding（重点是chunked模式），则在header中不能有Content-Length，有也会被忽视。
+          	Chunked模式，就是分块传输的意思。每一块都使用固定的格式，前边是块的大小，后面是数据，然后最后一块大小是0。
+          3、如果采用短连接，则直接可以通过服务器关闭连接来确定消息的传输长度。（这个很容易懂）
+          结合HTTP协议其他的特点，比如说Http1.1之前的不支持keep alive。那么可以得出以下结论：
+          1、在Http 1.0及之前版本中，content-length字段可有可无。
+          2、在http1.1及之后版本。如果是keep alive，则content-length和chunk必然是二选一。若是非keep alive，则和http1.0一样。content-length可有可无
 
 11、http和TCP的区别
     http协议是应用层协议，主要是解决如何包装数据。
