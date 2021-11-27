@@ -130,57 +130,75 @@
 4、Zset
 	1、ziplist：满足以下两个条件的时候
 		1、元素数量少于128
-		2、每个元素的长度小于64字节
-	2、skiplist：不满足上述两个条件就会使用跳表，具体来说是组合了map和skiplist
-		1、map用来存储member到score的映射，这样就可以在O(1)时间内找到member对应的分数
+		2、所有元素的长度都小于64字节的时候
+		3 ziplist 经过特殊编码的有序集合，使用压缩链表的结点来保存数据
+
+	2、skiplist：不满足上述两个条件,redis使用 dict和skiplist 来实现zset
+		1、dict用来存储member到score的映射，这样就可以在O(1)时间内找到成员对应的分数。zscore命令的实现
 		2、skiplist按从小到大的顺序存储分数skiplist每个元素的值都是[score,value]对，实现快速的按分数范围查找元素
 
 	3、skiplist原理
-		1、skiplist原理
+		1、skiplist基本原理
     		1、skiplist特点
     			(1) 由很多层结构组成
     			(2) 每一层都是一个有序的链表
     			(3) 最底层(Level 1)的链表包含所有元素
     			(4) 如果一个元素出现在 Level i 的链表中，则它在 Level i 之下的链表也都会出现。
-    			(5) 每个节点包含两个指针，一个指向同一链表中的下一个元素，一个指向下面一层的元素。
-    		2、跳跃表主要作用是：对有序的链表查询进行加速。
-    		   查找、插入和删除流程如下
-    		   1、查找
-    		   	  基本原理就是从最高层的链接节点开始，查询最高成链表中是否存在要查找的元素，如果存在则返回。
-    		   	  否则，查找到第一个比查询元素大的节点A，以及前一个比他小的节点B，借助B进入下层查找
-    		   	  以次类推，直到找到第0层 如果期间找到则返回，反之返回空。
-    		   2、插入
-    		   		1、随机生成一个最高层M，根据上述查找流程，找到要插入的未知，把插入的节点插入到 1～ M 的每一层。
-    		   		需要注意 生成的层M，1、如果小于skiplist现有的层，则直接查找插入，如果生成的层大于现有的层
-    		   		需要调整skiplist的层。
-    		   3、删除
-    		   		1、先查找当前要删除的元素A，比如当前元素在M层，把1-M层内的所有A都删除。让每一层中A的前一个节点 直接指向A的后一个节点。
+    		2、redis 如何实现 zset
+                 1、源码数据结构
+                    typedef struct zskiplistNode
+                    {
+                        sds						ele;			/*成员object对象*/
+                        double					score;			/*分值,用于排序*/
+                        struct zskiplistNode *	backward;		// 指向链表上一个节点的指针，以便第一层是双向链表，以此允许从尾到头的遍历
+                        struct zskiplistLevel
+                        {
+                            struct zskiplistNode *forward;	/* 每层中是指向链表下一个节点的指针*/
+                            unsigned long span;				/*每层中当前节点距离下一个节点的跨度*/
+                        } level[];							// 结构体zskiplistLevel的数组，表示跳表中的一层
+                    } zskiplistNode;
 
-    		   O(logn)的平均时间复杂度，其空间复杂度为O(n)。
-    		 3、redis 排名是怎么算出来的
+                    typedef struct zskiplist
+                    {
+                        struct zskiplistNode *header, *tail;/*跳跃表头节点和尾节点*/
+                        unsigned long length;				/*跳跃表中元素个数*/
+                        int level;							/*跳跃表当前最大层数*/
+                    } zskiplist;
 
-    		    typedef struct zskiplistNode {  // 跳跃表节点
-                    robj *obj;  // redis对象
-                    double score;   // 分值
-                    struct zskiplistNode *backward; // 后退指针
-                    struct zskiplistLevel {
-                        struct zskiplistNode *forward;  // 前进指针
-                        unsigned int span;  // 跨度
-                    } level[];
-                } zskiplistNode;
+                    typedef struct zset
+                    {
+                        dict *dict;
+                        zskiplist *zsl;
+                    } zset;
 
-                typedef struct zskiplist {
-                    struct zskiplistNode *header, *tail;
-                    unsigned long length;   // 跳跃表长度
-                    int level;  // 目前跳跃表的最大层数节点
-                } zskiplist
 
-	            zrank [zset name] [value]的实现依赖与一些附加在跳表上的属性：
-	            1、level[]存放指向各层链表后一个节点的指针（后向指针）。每层对应1个后向指针，用forward字段表示。另外，每个后向指针还对应了一个span值，它表示当前的指针跨越了多少个节点。
-	               redis在插入和删除元素的时候，都会更新这个值
-	            2、然后在搜索的过程中按经过的路径将路径中的span值相加得到rank
-                3、zrevrange的查询，是根据排名查数据，由扩展后的skiplist来提供。
-                  zrevrank是先在dict中由数据查到分数，再拿分数到skiplist中去查找，查到后也同时获得了排名。
+                 2、redis 中zset 实现有 ziplist或者skiplist
+
+                    1、使用ziplist时条件
+                        1、元素数量小于128
+                        2、所有元素的长度都小于64字节的时候
+
+                    2、ziplist 。经过特殊编码的有序集合，使用压缩链表的结点来保存数据。第一个节点保存member，第二个保存score。ziplist内的集合元素按score从小到大排序，score较小的排在表头位置。
+                        优点：减少内存。
+
+                    3、skiplist  + dirt
+                        1、redis实现中跳跃表和dict共同实现了zset，dict实现O(1)复杂度获取元素对应score。zscore命令的原理
+                        2、skiplist跳跃表用来处理区间查询 和 排名的相关操作。
+
+                    4、插入结点流程。
+                        1、查找
+                            从头节点开始搜索, 一层一层向下搜索, 直到直到最后一层, updata[]数组记录每一层中待插入节点的前一个节点，rank[]记录每一层中待插入节点的前一个节点的排名）
+                        2、随机一个层数level, 如果level大于当前存储的最大maxLevel值, 那么在 maxLevel ~ newlevel之间 ，因为些层还没有节点，所以节点的前一个节点都是头节点，即update数组存放指针的都是header节点，span都是跳远表元素的总数。然后 更新maxLevel的层。
+                        3、创建新的节点，插入到update数组对应的每一层。并更新update数组中节点span值 和新插入节点的span值。
+                            源码：
+                                x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);
+                                update[i]->level[i].span = (rank[0] - rank[i]) + 1
+                        4、随机的level可能小maxLevel, 则 level ~ maxLevel之间 元素没有变动，只需要将span值挨个加1即可
+
+                    5、查询元素排名/获取排名对应元素
+                        1、查询元素排名 ( Zrank 返回有序集中指定成员的排名)
+                            从最高层开始，一层层遍历，通过累计每层中 指向当前元素的结点的span，来获取排名。
+                    6、跳表的平均期望的查找、插入、删除时间复杂度都是O(logn)
 
 	         4、为什么采用跳表，而不使用哈希表或平衡树实现呢
 		        1、skiplist和各种平衡树（如AVL、红黑树等）的元素是有序排列的，而哈希表不是有序的。

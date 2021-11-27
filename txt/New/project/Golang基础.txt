@@ -275,3 +275,56 @@ golang foreach 都是使用副本的方式。所以m[stu.Name]=&stu实际上一�
     	1、go语言中只有值传递。不管是指针变量、还是值变量，都是传递的实际参数的副本。
     	2、引用传递，在c++语言中才有。比如C++使用者，在C++中，函数参数的传递方式有引用传递。所谓引用传递是指在调用函数时将实际参数的地址传递到函数中，那么在函数中对参数所进行的修改，将影响到实际参数。
 
+2、nil slice 和 empty slice 区别
+       1、slice 表示底层数组的一个分片，内部数据结构包含三个字段：指向底层数组的指针 (ptr)、数组分片的长度 (len) 和底层数组大小 (cap)
+       2、var s []int	 nil slice 没有分配内存
+		  var t = []int{}	empty slice 分配了内存，
+	   3、nil slice 没有底层数组（ptr 指针为 nil），empty slice 有底层数组，不过数组大小是 0 。
+	   4、json 时 nil slice 被编码成 null，而 empty slice 被编码成 []。
+
+3、空的interface{}能不能比较
+	1、类型不同的空接口间的比较结果不相同
+	2、不能比较空接口中的动态值。例如slice ,map ,可以比较数组，struct。（挨个比较struct中个每个成员变量）
+
+4、怎么获取和控制协程的数量
+  	1、获取协程数量
+  		1、runtime.NumGoroutine() 可以获取正在运行的协程数量
+  		2、通过pprof。 通过接口的方式，可以获取到当前的资源占用和协程运行情况
+  		3、通过Prometheus 监控可以获取到
+  	2、控制协程数量
+  		1、通过有缓存的channel控制
+  			func controlGoNums(num int)  {
+  				var wg sync.WaitGroup
+  				ch := make(chan  struct{},num)
+  				for i:= 0;i<20;i++{
+  					ch <- struct{}{}
+  					wg.Add(1)
+  					go func() {
+  						wg.Done()
+  						fmt.Printf("time:%v\n",time.Now().Unix())
+  						time.Sleep(1*time.Second)
+  						<-ch
+  					}()
+  				}
+  				wg.Wait()
+  			}
+
+  		2、通过三方库
+  			1、panjf2000/an=p009i8级哦、iuyptoriturysdfghkjlk/.j，m n cs 实现协程池
+  			1、panjf2000/an=p009i8级哦、iuyptoriturysdfghkjlk/.j，明年初本命年吗，没。，/。s 实现协程池
+  			原理：
+  				1、Ants 对于任务的执行原理比较直观，通过一个工作池的形式维护 goroutine 集合。当向工作池提交任务时，从池中取出 worker 来执行。如果已经存在可用的 goroutine 了，那么直接开始执行，如果没有，则需要判断是否已经达到容量上限。如果还没有超过，那就意味着可用的 worker 比容量更少，此时启动新的 worker 来执行。而如果容量已经用完，就依据是否为阻塞模式，来马上返回，或是阻塞等待
+  				2、当任务执行完毕，对应的 worker 就会得到释放，重新回到池中，等待下一个任务的调度，实现 goroutine 的复用。
+
+5、slice Append 函数。
+		1、slice 通过append()可以函数，可以追加一个、多个元素，或者 追加一个切片。
+		2、当slice 的cap 足够的情况下，直接操作底层数组追加，这个时候slice当参数的时候，追加会影响原来的slice。
+		2、当slcie 的cap 不够的情况下，会进行扩容
+			1、先创建一个新的数组，并申请内存，然后把原slice的元素复制到新数组，在新数组的后面追加元素。这个时候，如果slice当参数时，不会影响原来的slice。
+			2、扩容策略并不是简单的扩为原切片容量的 2 倍或 1.25 倍，为了减少内存碎片，还有内存对齐的操作。扩容后的容量 >= 原容量的 2 倍或 1.25 倍
+
+    2、Go语言切片复制
+    	Go 语言的切片的复制使用内置的 copy 函数
+    		func copy(dst, src []Type) int
+    		将切片 src 拷贝到切片 dst，返回拷贝成功的元素的个数。并且两个切片类型必须一样。
+
