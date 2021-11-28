@@ -40,7 +40,7 @@
 
         3、令牌桶算法(Token Bucket Algorithm)
         算法原理：
-            1、接口限制 t 秒内最大访问次数为 n，则每隔 t/n 秒会放一个 token 到桶中；
+            1、按照每秒t个（t/s）的速率生产token，生产token放入；
             2、桶中最多可以存放 b 个 token，如果 token 到达时令牌桶已经满了，那么这个 token 会被丢弃；
             3、接口请求会先从令牌桶中取 token，拿到 token 则处理接口请求，拿不到 token 就阻塞或者拒绝服务
 
