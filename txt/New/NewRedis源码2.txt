@@ -193,7 +193,7 @@
                             源码：
                                 x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);
                                 update[i]->level[i].span = (rank[0] - rank[i]) + 1
-                        4、随机的level可能小maxLevel, 则 level ~ maxLevel之间 元素没有变动，只需要将span值挨个加1即可
+                        4、随机的level可能小maxLevel, 则 level ~ maxLevel之间 元素没有变动，只需要将updates数组对应的节点的span值挨个加1即可
 
                     5、查询元素排名/获取排名对应元素
                         1、查询元素排名 ( Zrank 返回有序集中指定成员的排名)
