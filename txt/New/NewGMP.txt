@@ -128,7 +128,7 @@
                     	1、M 创建时注册一个 SIGURG 信号，以及回调处理函数：sighandler。
                     	2、sysmon 线程检测到执行时间过长的 goroutine ，一般超过10ms，会向相应的 M发送 SIGURG 信号。
                     	3、M收到信号后，内核执行 sighandler 回调 函数，保存当前执行现场。
-                    	4、回调函数把goroutine 的状态从 running 改成 runnable；接着调 dropg 将 g 和 m 解绑；然后 将 goroutine 丢到全局队列中
+                    	4、回调函数把goroutine 的状态从 running 改成 runnable；接着调 dropg 将 g 和 m 解绑；然后 将 goroutine 丢到P的本地队列中
                     		M 则继续寻找其他 goroutine 来运行。
 
             4、源码
