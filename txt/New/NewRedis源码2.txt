@@ -195,10 +195,45 @@
                                 update[i]->level[i].span = (rank[0] - rank[i]) + 1
                         4、随机的level可能小maxLevel, 则 level ~ maxLevel之间 元素没有变动，只需要将updates数组对应的节点的span值挨个加1即可
 
-                    5、查询元素排名/获取排名对应元素
-                        1、查询元素排名 ( Zrank 返回有序集中指定成员的排名)
-                            从最高层开始，一层层遍历，通过累计每层中 指向当前元素的结点的span，来获取排名。
-                    6、跳表的平均期望的查找、插入、删除时间复杂度都是O(logn)
+                    5、根据 成员score获取排名 getrank
+                     	 for (i = zsl->level-1; i >= 0; i--) {
+                            while (x->level[i].forward &&
+                                (x->level[i].forward->score < score ||
+                                    (x->level[i].forward->score == score &&
+                                    sdscmp(x->level[i].forward->ele,ele) <= 0))) {
+                                rank += x->level[i].span;
+                                x = x->level[i].forward;
+                            }
+
+                            /* x might be equal to zsl->header, so test if obj is non-NULL */
+                            if (x->ele && sdscmp(x->ele,ele) == 0) {
+                                return rank;
+                            }
+                        }
+                        1、从头节点开始，由高层向低层遍历，如果遍历节点的socre值 比 查找节点的socre小，或者
+                        如果遍历节点的socre值  =  查找节点的socre值，但是成员ele 的大小<= 查找节点的ele
+                        则累加 遍历节点的span值，否则 进入下一层查找。
+
+
+
+                    6、根据rank获取成员score zslGetElementByRank
+                    	  x = zsl->header;
+                        for (i = zsl->level-1; i >= 0; i--) { //从高层向底层累加span直到累加的值等于rank
+                            while (x->level[i].forward && (traversed + x->level[i].span) <= rank)
+                            {
+                                traversed += x->level[i].span;
+                                x = x->level[i].forward;
+                            }
+                            if (traversed == rank) {
+                                return x;
+                            }
+                        }
+
+
+                        1、从头节点开始，然后由最高层向低层遍历，并且累加span直到等于rank。如果当前层的累加值大于rank
+                        	则进入下一层查找。如果 排名累加值 = rank ，则直接返回当前节点。如果没有找到返回null
+
+                 7、跳表的平均期望的查找、插入、删除时间复杂度都是O(logn)
 
 	         4、为什么采用跳表，而不使用哈希表或平衡树实现呢
 		        1、skiplist和各种平衡树（如AVL、红黑树等）的元素是有序排列的，而哈希表不是有序的。
