@@ -67,13 +67,14 @@
 
 	2、context 底层实现原理
 		1、Context 是一个接口，定义了 4 个方法，它们都是幂等的。也就是说连续多次调用同一个方法，得到的结果都是相同的
-			1、Done() <-chan struct{}	当 context 被取消或者到了 deadline，返回一个被关闭的 只读channel
-				注意：当这个 channel 被关闭时，说明 context 被取消了，读一个关闭的 channel 会读出相应类型的零值。并且源码里没有地方会向这个 channel 里面塞入值。换句话说，这是一个 receive-only 的 channel。因此在子协程里读这个 channel，除非被关闭，否则读不出来任何东西。也正是利用了这一点，子协程从 channel 里读出了值（零值）后，就可以做一些收尾工作，尽快退出。
-			2、    Err() error 在 channel Done 关闭后，返回 context 取消原因
-			3、 Deadline() (deadline time.Time, ok bool)		返回 context 是否会被取消以及自动取消时间（即 deadline）
-			4、Value() 获取之前设置的 key 对应的 value。
-
-
+               1、 Done() <-chan struct{}
+                    当 context 被取消或者到了 deadline，返回一个被关闭的 只读channel
+               2、 Err() error
+                    在 channel Done 关闭后，返回 context 取消原因
+               3、Deadline() (deadline time.Time, ok bool)
+                    返回 context 是否会可以被取消以及自动取消时间（即 deadline）
+               4、Value(key interface{}) interface{}
+                    获取 key 对应的 value
 			这个接口主要被三个类继承实现，分别是emptyCtx、ValueCtx、cancelCtx
 
 	3、context类型
@@ -81,7 +82,6 @@
 		    1、emptyCtx 是context.Background 和 context.TODO()的底层实现。
 		    它是一个int类型，实现了Context接口所有的方法，但是没有做任何处理，都是默认返回空值。
 		    2、emptyCtx结构体类型，是一个不可取消，没有设置截止时间，没有携带任何值的Context
-		    3、
 		2、cancelCtx
             type cancelCtx struct {
             	Context
