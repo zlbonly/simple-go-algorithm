@@ -1,55 +1,64 @@
 1、golang 如何实现多态？
 	1、interface
-		Go接口是一组方法的集合，可以理解为抽象的类型，他提供了一种非侵入式的接口。然和类型，只要实现了该接口中的方法集，那么就属于这个类型。
+        1、Go中interface 是一组方法的集合。只要实现了该接口所有的方法集，就代表实现了该接口，
+        	   是一种非侵入式的实现，常配合Struct结构体实现 组合继承。
+        2、interface{}  空接口，具有0个方法的接口称为空接口，所有类型可以实现空接口。
+        		常用来做【反射】和【泛型】
 		例如：
-			type Duck interface{
-				Quack()
-				DuckGo()
-			}
-			type Chickken struct{
-			}
-			func(c Chicken) IsChicken() bool{
-				fmt.println("a chicken")
-			}
-			func (c Chicken) Quack() {
-    				fmt.Println("嘎嘎")
-			}
-			func (c Chicken) DuckGo() {
-   				 fmt.Println("大摇大摆的走")
-			}
+			type Behavior interface {
+            	Speak()
+            }
+            type Animal struct {
+            	Name string
+            	Age  int
+            }
+            type Dog struct {
+            	Desc string
+            	Animal
+            }
+            func (a Animal) Speak() {
+            	fmt.Printf("Animal Speak: Name:%v,Age:%v\n", a.Name, a.Age)
+            }
+            func (d Dog)Speak()  {
+            	fmt.Printf("Dog Speak: Name:%v,Age:%v,Desc:%v\n", d.Name, d.Age,d.Desc)
+            }
+            func Play( behavior Behavior)  {
+            	behavior.Speak()
+            }
 
-			注意，这里只是实现了 Duck 接口方法，并没有将鸡类型和鸭子接口显式绑定。这是一种非侵入式的设计。
-			func DoDuck(d Duck) {
-  			 	 d.Quack()
-    			 d.DuckGo()
-			}
-
-			func main() {
-   				 c := Chicken{}
-    			 DoDuck(c)
-			}
-
-			执行正常。如此是不是很类似于其他语言的多态，其实这就是 Go 多态的实现方法。
-			核心思想： 我理解为“依赖于接口而不是实现接口，优先使用组合而不是继承
-			其他语言，例如 php ,生命一个接口，每个实现都需要 继承该接口，如果接口改动实现也需要跟着改动，是一种侵入式的。
+            func main() {
+            	d := Dog{
+            		Desc: "this is dog",
+            		Animal: Animal{
+            			"dog ",
+            			20,
+            		},
+            	}
+            	Play(d)
+            	d.Speak()
+            }
 
 	2 空接口和nil 区别
         1、interface底层由两部分组成：类型、值(type, value)，当二者均为nil时，此时interface才为nil。
 	3、golang interface底层源码分析
 		1、interface 底层接口
-		    1、iface 和 eface 都是 Go 中描述接口的底层结构体，区别在于 iface 描述的接口包含方法，而 eface 则是不包含任何方法的空接口：interface{}。
-		    2、iface 内部维护两个指针，tab 指向一个 itab 实体， 它表示接口的类型以及赋给这个接口的实体类型。data 则指向接口具体的值，一般而言是一个指向堆内存的指针。
+            1、使用 runtime.eface 结构体表示不包含任何方法的 interface{} 类型
+             type eface struct {
+                   _type *_type
+                   data  unsafe.Pointer
+              }
+             	1、_type 指向具体实现的类型
+                2、data是指向具体数据的指针
+
+            2、使用 runtime.iface 结构体表示包含方法的接口
                 type iface struct {
                     tab  *itab
                     data unsafe.Pointer
                 }
-            3、相比 iface，eface 就比较简单了。只维护了一个 _type 字段，表示空接口所承载的具体的实体类型。data 描述了具体的值。
-                type eface struct {
-                    _type *_type
-                    data  unsafe.Pointer
-                }
-
-				从这个数据结构可以看出，只有当 2 个字段都为 nil，空接口才为 nil。空接口的主要目的有 2 个，一是实现“泛型”，二是使用反射。
+				1、itab 作用有两个
+					1）指向包含方法的interface的具体结构类型，
+					2）指向具体实现的方法集
+				2、data是指向具体数据的指针
 
 	4、类型断言
 		一个interface被多种类型实现时，有时候我们需要区分interface的变量究竟存储哪种类型的值，go可以使用comma,ok的形式做区分 value, ok := em.(T)：em 是 interface 类型的变量，T代表要断言的类型，value 是 interface 变量存储的值，ok 是 bool 类型表示是否为该断言的类型 T。总结出来语法如下：
