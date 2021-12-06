@@ -145,9 +145,8 @@
     一般业务上不要求全局有序。一般会要求一个用户的先后顺序不能被颠倒，这种用用户的userId作为key hash一下，保证落在一个partition中就可以了。
 
 10、kafka的rebalance机制
-   	1、在Kafka中，当有新消费者加入或者订阅的Topic数发生变化时，会触发Rebalance(
-   	2、Rebalance 发生时，Group 下所有 Consumer 实例都会协调在一起共同参与，Kafka 能够保证尽量达到最公平的分配。但是 Rebalance 过程对 Consumer Group 会造成比较严重的影响。
-   	    在 Rebalance 的过程中 Consumer Group 下的所有消费者实例都会停止工作，等待 Rebalance 过程完成。
+   	1、在Kafka中，当有新消费者加入或者订阅的Topic数发生变化时，会触发Rebalance。
+   	2、在 Rebalance 的过程中 Consumer Group 下的所有消费者实例都会停止工作，等待 Rebalance 过程完成。Rebalance 过程对 kafka会造成比较严重的影响
    	2、发生 rebalance 的时机
    		组成员个数发生变化。例如有新的 consumer 实例加入该消费组或者离开组。
    		订阅的 Topic 个数发生变化。
