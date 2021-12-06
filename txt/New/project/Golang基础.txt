@@ -268,11 +268,13 @@ golang foreach 都是使用副本的方式。所以m[stu.Name]=&stu实际上一�
 	2、不能比较空接口中的动态值。例如slice ,map ,可以比较数组，struct。（挨个比较struct中个每个成员变量）
 
 4、怎么获取和控制协程的数量
-  	1、获取协程数量
+    1、为什么要控制协程数量
+        1、协程池通过复用和限制 goroutine 数，可以减轻 runtime 调度压力，避免过多的 gorouutine 占用系统 cpu 和内存资源。
+  	2、获取协程数量
   		1、runtime.NumGoroutine() 可以获取正在运行的协程数量
   		2、通过pprof。 通过接口的方式，可以获取到当前的资源占用和协程运行情况
   		3、通过Prometheus 监控可以获取到
-  	2、控制协程数量
+  	3、控制协程数量
   		1、通过有缓存的channel控制
   			func controlGoNums(num int)  {
   				var wg sync.WaitGroup

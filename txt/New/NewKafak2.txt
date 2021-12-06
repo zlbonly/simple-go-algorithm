@@ -1,14 +1,18 @@
 1、kafka的架构和基本组件：
-  	1、Broker：一台 kafka 机器就是一个 Broker，一个集群由多个 Broker 组成，一个 Broker 可以容纳多个 Topic，每个 Broker 之间地位平等。
-    2、Topic：物理上不同 Topic 的消息分开存储，逻辑上一个 Topic 虽然保存在一个或多个 Broker 上，但是用户指定 Topic 即可生成或消费，而不需要关心数据存放何处；
-    3、Partition：为了可扩展性，一个大的 Topic 会被分为多个 Partition，从而分布到多台 Broker 上。Partition 中的每条消息都会被分配一个自增 Id（offset），Kafka 只保证按一个 Partition 中的顺序将消息发送给消费者，但不保证单个 Topic 中的多个 Partition 间的顺序；
-    4、Offset：消息在 Topic 的 Partition 中的位置。同一个 Partition 中的消息随着消息的写入，其对应的 Offset 也自增
-    5、Replica：副本。Topic 的 Partition 含有 N 个 Replica，N 为副本因子。其中一个 Replica 为 Leader，其他都为 Follower，Leader 处理 Partition 的所有读写请求，Follower 会定期同步 Leader 上的数据。
-    6、Message：消息，通信的基本单元。每个 Producer 可以向一个 Topic 发布一些消息。
-    7）Producer：消息生产者
-    8）Consumer：消息消费者
-    9、Consumer Group：消费者组，每个 Consumer 属于一个 Consumer Group；反过来，每个 Consumer Group 中可以包含多个 Consumer。一个 Partition 中的消息只会被相同的 Consumer Group 中的某个 Consumer 消费，每个 Consumer Group 消息消费是相互独立的。
-    10、Zookeeper：存放 kafka 集群相关元数据的组件。会保存 Topic 的状态信息，例如：分区个数，分区组成，分区的分布情况等；保存 Broker 的状态信息；保存消费者的消费信息。通过这些，kafka 可以很好的将消息生产、存储、消费过程结合起来
+    kafka的架构
+    	1、Producer
+    		1、生产者将消息发布到Kafka的topic中。broker接收到生产者发送的消息后，broker将该消息追加到topic对应的partion中
+    		2、一个Topic可以分成多个Partition，partition物理上由多个segment组成。
+    		3、一个Partition只对应一个Broker，一个Broker可以管理多个Partition。
+
+    	2、Broker
+    		1、在Kafka集群中会有一个或者多个broker，其中有一个broker会被选举为控制器（Kafka Controller），它负责管理整个集群中所有分区和副本的状态。
+    		2、当某个分区的leader副本出现故障时，由控制器负责为该分区选举新的leader副本。
+
+    	3、Consumer
+    		1、消费者可以从broker中读取数据进行消费
+    		2、每一个Consumer都属于一个Consumer Group
+    		3、每条消息和partition只能被 consumer group 中的一个 Consumer 消费，但可以被多个 consumer group 消费。
 
 2 kafka 吞吐量，速度快的原因
 		1、顺序读写
@@ -121,11 +125,13 @@
 		3、由于Kafka消息key设置的不合理，导致分区数据不均衡
 			合理修改Producer处的key设置规则，解决数据倾斜问题。比如：给key加随机后缀。
 
-8、 Kafka 中的领导者副本（Leader Replica）和追随者副本（Follower Replica）的区别
+8、kafka高可用机制
+  	1、Kafka通过副本机制（Replication）实现高可用，保证主节点宕机后依然可以对外提供服务。
+  	2、Kafak 使用topic 来组织数据，每个topic分为若干个分区，分区部署在1到多个broker上，每个partition 都有多个副本。
+  	3、副本类型分为两种：一种是leader（领导者），一种是Follower 跟随者。
+  	  1、只有Leader副本才能对外提供读写服务，响应Clients端的请求。Follower副本只是采用拉（PULL）的方式，被动地同步Leader副本中的数据。
+  	  2、当 Leader 副本所在的 broker 宕机后，Kafka 依托于 ZooKeeper 提供的监控功能能够实时感知到，并开启新一轮的选举，从追随者副本中选一个作为 Leader
 
-        Kafka副本当前分为领导者副本和追随者副本。只有Leader副本才能对外提供读写服务，响应Clients端的请求。
-        Follower副本只是采用拉（PULL）的方式，被动地同步Leader副本中的数据，
-        并且在Leader副本所在的Broker宕机后，随时准备应聘Leader副本。
 
 9、 kafak 保证消息顺序
 	1、Kafka保证的是分区有序而不是主题有序
@@ -137,3 +143,16 @@
     如果你们就像死磕kafka，但是对数据有序性有严格要求，那我建议：创建Topic只指定1个partition，这样的坏处就是磨灭了kafka最优秀的特性。所以可以思考下是不是技术选型有问题， kafka本身适合与流式大数据量，要求高吞吐，对数据有序性要求不严格的场景。。
 
     一般业务上不要求全局有序。一般会要求一个用户的先后顺序不能被颠倒，这种用用户的userId作为key hash一下，保证落在一个partition中就可以了。
+
+10、kafka的rebalance机制
+   	1、在Kafka中，当有新消费者加入或者订阅的Topic数发生变化时，会触发Rebalance(
+   	2、Rebalance 发生时，Group 下所有 Consumer 实例都会协调在一起共同参与，Kafka 能够保证尽量达到最公平的分配。但是 Rebalance 过程对 Consumer Group 会造成比较严重的影响。
+   	    在 Rebalance 的过程中 Consumer Group 下的所有消费者实例都会停止工作，等待 Rebalance 过程完成。
+   	2、发生 rebalance 的时机
+   		组成员个数发生变化。例如有新的 consumer 实例加入该消费组或者离开组。
+   		订阅的 Topic 个数发生变化。
+   		订阅 Topic 的分区数发生变化。
+   	3、rebalance 流程
+   		1、所有消费成员都向 【组协调器（Group Coordinator）】发送请求，请求入Consumer Group。一旦所有成员都发送了请求，Coordinator会从中选择一个Consumer担任Leader的角色，并把组成员信息以及订阅信息发给Leader。
+   		2、Leader开始分配消费方案，指明具体哪个Consumer负责消费哪些Topic的哪些Partition。
+   		3、一旦完成分配，leader会将这个方案发给Coordinator。Coordinator接收到分配方案之后会把方案发给各个Consumer，这样组内的所有成员就都知道自己应该消费哪些分区了。
