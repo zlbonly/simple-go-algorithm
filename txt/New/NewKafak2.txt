@@ -3,7 +3,6 @@
     	1、Producer
     		1、生产者将消息发布到Kafka的topic中。broker接收到生产者发送的消息后，broker将该消息追加到topic对应的partion中
     		2、一个Topic可以分成多个Partition，partition物理上由多个segment组成。
-    		3、一个Partition只对应一个Broker，一个Broker可以管理多个Partition。
 
     	2、Broker
     		1、在Kafka集群中会有一个或者多个broker，其中有一个broker会被选举为控制器（Kafka Controller），它负责管理整个集群中所有分区和副本的状态。
@@ -155,3 +154,12 @@
    		1、所有消费成员都向 【组协调器（Group Coordinator）】发送请求，请求入Consumer Group。一旦所有成员都发送了请求，Coordinator会从中选择一个Consumer担任Leader的角色，并把组成员信息以及订阅信息发给Leader。
    		2、Leader开始分配消费方案，指明具体哪个Consumer负责消费哪些Topic的哪些Partition。
    		3、一旦完成分配，leader会将这个方案发给Coordinator。Coordinator接收到分配方案之后会把方案发给各个Consumer，这样组内的所有成员就都知道自己应该消费哪些分区了。
+
+   	4、rebalance问题处理思路
+    	1、组成员崩溃 导致的rebalance
+    		1、消费者心跳超时，导致 rebalance。
+    			原因：我们知道消费者是通过心跳和协调者保持通讯的，如果协调者收不到心跳，那么协调者会认为这个消费者死亡了，从而发起 rebalance。
+    			答案：一般是调高心跳超时时间（session.timeout.ms），调整超时时间（session.timeout.ms）和心跳间隔时间（heartbeat.interval.ms）的比例。阿里云官方文档建议超时时间（session.timeout.ms）设置成 25s，最长不超过 30s。那么心跳间隔时间（heartbeat.interval.ms）就不超过 10s。
+    		2、消费者处理时间过长，导致 rebalance。
+    			原因：如果消费者处理时间过长，那么同样会导致协调者认为该 consumer 死亡了，从而发起重平衡。
+    			答案：一般来说就是增加消费者处理的时间（即提高 max.poll.interval.ms 的值），减少每次处理的消息数（即减少 max.poll.records 的值）。
