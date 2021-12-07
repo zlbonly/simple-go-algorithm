@@ -259,24 +259,14 @@
         RPC，可以基于高效的二进制传输
         HTTP，大部分是通过json来实现的，字节大小和序列化耗时
 
-
-grpc如何处理超时
-
-gRPC 基于 HTTP2，HTTP2 传输的最小单位是 Frame（帧）。HTTP2 的帧包含很多类型：DATA Frame、HEADERS Frame、PRIORITY Frame、RST_STREAM Frame、CONTINUATON Frame 等。一个 HTTP2 请求/响应可以被拆成多个帧并行发送，每一帧都有一个 StreamID 来标记属于哪个 Stream。服务端收到 Frame 后，根据 StreamID 组装出原始请求数据。
-
-gRPC 系列——grpc超时传递原理
-
-	1、客户端设置 timeout
-		用户定义好 protobuf 并通过 protoc 生成桩代码后，桩代码中已经包含了 gRPCCient 接口的实现，每一个在 protobuf 中定义的 RPC，底层都会通过 ClientConn. Invoke 向服务端发起调用：
+7、grpc的超时机制和重试策略
+	1、超时机制
+		1、通过yaml 文件配置timeouts时间 30s。客户端发起rpc调用时会传入带了timeout的 ctx。
+		2、grpc 框架底层通过HTTP2协议发送RPC请求时，将timeout值写入到grpc-timeout HEADERS Frame中
+		3、服务端接收到rpc请求时，grpc框架底层解析HTTP2 HEADERS帧，读取grpc-timeout值，并透传到实际处理rpc业务的
+			Context中
+	    4、如果此时服务端又发起对其他 gRPC 服务的调用，且使用的是透传的 ctx，这个 timeout 会减去在本进程中耗时，从而导致这个 timeout 传递到下一个 gRPC 服务端时变短，这样即实现了所谓的 超时传递
 
 
-		分析源码可以看到客户端发起请求时，如果设置了带 timeout 的ctx，则会导致底层 HTTP2 HEADERS Frame 中追加 `grpc-timeout` 字段。 grpc-timeout 字段值被转化成 XhYmZs 字符串形式的超时时间
-	2、服务端解析 timeout
-		服务端通过 Serve 方法启动 grpc Server，监听来自客户端连接。
-		1、decodeHeader 会遍历 frame 中所有 Fields，并调用 processHeaderField 对 HTTP2 HEADERS 帧中的特定的 Field 进行处理。
-		2、比如可以从 :path 中解析出包含 protobuf package、service name 和 RPC method name 的完整路径；
-		3、比如可以从 grpc-timeout 中解析出上游传递过来的 timeout；
-		4、如果此时服务端又发起对其他 gRPC 服务的调用，且使用的是透传的 ctx，这个 timeout 会减去在本进程中耗时，从而导致这个 timeout 传递到下一个 gRPC 服务端时变短，这样即实现了所谓的 超时传递 。
-
-
-	参考链接： https://xiaomi-info.github.io/2019/12/30/grpc-deadline/
+	2、grpc 客户端的重试策略
+		1、Retry policy :  出错立即重试。 并且配置最大重试次数MaxAttempts = 2
