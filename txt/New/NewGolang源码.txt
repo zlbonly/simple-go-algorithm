@@ -616,6 +616,11 @@
                                         import "net/http"
                                         import_ "net/http/pprof"
                                    2、你的 HTTP 服务都会多出/debug/pprof，在浏览器中访问即可 ，会显示goroutine堆栈和内存分配信息。
+                                        	1、CPU Profiling CPU分析，默认取样30s内的周期数据。分析CPU的占用率，使用情况
+                                        	2、内存分析。 监视当前内存的使用情况，并在应用程序进行堆分配的时候记录堆栈跟踪
+                                        	3、阻塞分析，记录goroutine阻塞等待情况，以及goroutine的数量
+                                        	4、互斥锁分析，报告锁的竞争情况
+
                                2、命令行方式
                                     使用命令 go tool pprof url可以获取指定的profile文件，比如：profile类型alloc已分配的内存，inuse代表使用中的内存。
                                     最常用的：top、list、traces，分别介绍一下。
