@@ -13,6 +13,28 @@
     myIsam 中，主索引和辅助索引在结构上没有区别，都是存放地址，只是主索引要求key是唯一的，而辅助索引的key可以重复。
     myIsam主键索引比较好理解，B+Tree里面的叶子节点的key存储的是索引值，value存储的是相应data数据的指针。
 
+    MyISAM索引原理：
+    	1、采用非聚簇索引-MyISAM myi索引文件和myd数据文件分离，索引文件仅保存数据记录的指针地址。叶子节点data域存储指向数据记录的指针地址。
+    	2、MyISAM索引按照B+Tree搜索，如果指定的Key存在，则取出其data域的值，然后以data域值-数据指针地址去读取相应数据记录
+    	3、辅助索引和主索引在结构上没有任何区别，只是主索引要求key是唯一的，而辅助索引的key可以重复
+
+
+    Innodb索引原理：
+    	1、B+Trees 非叶子节点只存储 key，不存储 data，这可以大大提高每个节点存储 key 的个数,降低了高度；
+    	2、data 都存储在叶子节点中的；
+    	3、B+Tree的每个叶子节点增加一个指向相邻叶子节点的指针。
+    		提高区间访问的性能，例如如果要查询key为从18到49的所有数据记录，当找到18后，只需顺着节点和指针顺序遍历就可以一次性访问到所有数据节点，不用从头再查询一次，极大提到了区间查询效率。
+
+    聚簇索引和非聚簇索引
+    	1、区别。
+    		1、聚簇索引：将数据存储和索引放到了一起，找到索引也就找到了数据。
+    		2、非聚簇索引：数据存储和索引分开存放，索引结构的叶子节点指向了数据对应的行。
+
+    	2、
+    		1、MyISAM 不管是主键索引，还是二级索引使用的都是非聚簇索引。
+    		2、InnoDB 主键使用的是聚簇索引。表数据是和主键一起存储的。二级索引的叶结点存储行的主键值，需要根据
+    		   主键的值进行回表查询。
+
 2、索引覆盖
     1、索引覆盖，是指从非主键索引就能查到的记录，而不需要查询主键索引中的记录，避免了回表的产生，减少了数的搜索次数，提升查询的性能
 
@@ -529,7 +551,10 @@
 		1、优化的思想 避免数据量大的时候，扫描过多的数据记录。
 
 			1、利用 id >= 的形式
-				select * from test where id >= (select id from test where val = 5  limit 30000,1) limit 5
+				1、select * from test where id >= (select id from test where val = 5  limit 30000,1) limit 5
+		        例如：
+		            1、select *  from ident_person_log  limit 100000,10;
+		            2、select * from ident_person_log a where a.logid >= (select b.logid from ident_person_log b  order by b.logid limit 99999,1) limit 10;
 			2、利用join
 				select * from test a inner join (select id from test where val limit 30000,5) b on a.id = b.id.
 
